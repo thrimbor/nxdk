@@ -1,0 +1,32 @@
+ifeq ($(DXT_TITLE),)
+DXT_TITLE = nxdk_app
+endif
+
+ifeq ($(OUTPUT_DIR),)
+OUTPUT_DIR = bin
+endif
+
+# Try to reduce size
+CFLAGS += -Os -fno-stack-protector -fomit-frame-pointer -ffunction-sections -fdata-sections
+
+# Override entry point, specify required alignment for DXTs and make relocatable
+LDFLAGS= -entry:DxtEntry -filealign:0x1000 -driver -align:0x1000 -base:0x400000 -fixed:no
+
+
+# This is the first Makefile target, as we try to avoid building an XBE (which would otherwise be the first target).
+# A bit of a hack because bin/ does not exist.
+#
+# This target also has to solve a problem with DXTs.
+# For DXTs, we require that section raw-address = virtual-address.
+# The loader in XBDM.dll does not remap sections.
+# So if our DXT does not respect this, then it would crash during relocation (using .reloc) when trying to access the sections.
+#
+$(OUTPUT_DIR)/$(DXT_TITLE).dxt: main.exe $(OUTPUT_DIR)
+	@echo "[ BUILD    ] $@"
+	@cp -f "$<" "$@"
+
+# Include libxbdm, since it's not linked in by default
+main.exe: $(NXDK_DIR)/lib/libxbdm.lib
+include $(NXDK_DIR)/lib/xbdm/Makefile
+
+include $(NXDK_DIR)/Makefile
