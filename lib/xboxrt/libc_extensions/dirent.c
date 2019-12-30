@@ -1,5 +1,6 @@
 #include <dirent.h>
 #include <assert.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,26 +9,26 @@
 DIR *opendir (const char *dirname)
 {
     if (dirname == NULL) {
-        //errno = EFAULT;
+        errno = EFAULT;
         return NULL;
     }
 
     size_t dirlen = strlen(dirname);
     if (dirlen > MAX_PATH-2) {
-        //errno = ENAMETOOLONG;
+        errno = ENAMETOOLONG;
         return NULL;
     }
 
     if (dirlen == 0) {
-        //errno = ENOENT;
+        errno = ENOENT;
         return NULL;
     }
 
-    // FIXME: check if it's really a directory
+    // FIXME: check if it's really a directory, return ENOTDIR
 
     DIR *dir = malloc(sizeof(DIR));
     if (!dir) {
-        // FIXME: set errno
+        errno = ENOMEM;
         return NULL;
     }
 
@@ -47,15 +48,24 @@ int closedir (DIR *dir)
 {
     assert(dir != NULL);
 
+    int result;
+
     if (dir->handle != INVALID_HANDLE_VALUE) {
-        FindClose(dir->handle);
-        // FIXME: errno?
+        if (!FindClose(dir->handle)) {
+            // FIXME: Needs the PDCLib-PR to work!
+            //_PDCLIB_w32errno();
+            result = -1;
+        } else {
+            result = 0;
+        }
+    } else {
+        result = -1;
+        errno = EFAULT;
     }
 
     free(dir);
 
-    // FIXME what do we return?
-    return 1;
+    return result;
 }
 
 struct dirent *readdir (DIR * dir)
@@ -68,13 +78,15 @@ struct dirent *readdir (DIR * dir)
         dir->ready = true;
         dir->handle = FindFirstFileA(dir->path, &findFileData);
         if (dir->handle == INVALID_HANDLE_VALUE) {
-            // FIXME: errno
+            // FIXME: Needs the PDCLib-PR to work!
+            //_PDCLIB_w32errno();
             return NULL;
         }
     } else {
         int rval = FindNextFileA(dir->handle, &findFileData);
         if (rval == 0 && GetLastError() == ERROR_NO_MORE_FILES) {
-            //FIXME: errno
+            // FIXME: Needs the PDCLib-PR to work!
+            //_PDCLIB_w32errno();
             return NULL;
         }
     }
@@ -91,9 +103,18 @@ void rewinddir (DIR * dir)
 {
     assert(dir != NULL);
 
+    int result;
     if (dir->handle != INVALID_HANDLE_VALUE) {
-        FindClose(dir->handle);
-        // FIXME: errno?
+        if (!FindClose(dir->handle)) {
+            // FIXME: Needs the PDCLib-PR to work!
+            //_PDCLIB_w32errno();
+            result = -1;
+        } else {
+            result = 0;
+        }
+    } else {
+        result = -1;
+        errno = EFAULT;
     }
 
     dir->handle = INVALID_HANDLE_VALUE;
