@@ -24,7 +24,11 @@ DIR *opendir (const char *dirname)
         return NULL;
     }
 
-    // FIXME: check if it's really a directory, return ENOTDIR
+    DWORD attr = GetFileAttributesA(dirname);
+    if (attr == INVALID_FILE_ATTRIBUTES || (attr & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+        errno = ENOTDIR;
+        return NULL;
+    }
 
     DIR *dir = malloc(sizeof(DIR));
     if (!dir) {
