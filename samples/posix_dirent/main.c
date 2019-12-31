@@ -2,6 +2,8 @@
 #include <hal/video.h>
 #include <windows.h>
 #include <dirent.h>
+#include <string.h>
+#include <errno.h>
 
 int listdir(const char *path)
 {
@@ -11,7 +13,7 @@ int listdir(const char *path)
   dp = opendir(path);
   if (dp == NULL)
   {
-      debugPrint("opendir error\n");
+      debugPrint("opendir error: %s\n", strerror(errno));
     //perror("opendir");
     return -1;
   }
