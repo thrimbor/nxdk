@@ -12,6 +12,9 @@ CRITICAL_SECTION pioFileCs;
 __attribute__((constructor)) void _init_fds (void)
 {
     InitializeCriticalSection(&pioFileCs);
+    for (int i = 0; i < MAX_PIO_FILES; i++) {
+        pio_fds[i] = INVALID_HANDLE_VALUE;
+    }
 }
 
 int _reserve_fd (HANDLE handle)
