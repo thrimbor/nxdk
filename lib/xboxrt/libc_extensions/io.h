@@ -16,4 +16,7 @@ int close (int fd);
 #define _unlink unlink
 int unlink (const char *filename);
 
+int _access (const char *path, int mode);
+int access (const char *path, int mode);
+
 #endif

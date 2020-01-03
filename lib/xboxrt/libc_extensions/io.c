@@ -151,3 +151,47 @@ int unlink (const char *filename)
 
     return 0;
 }
+
+int _access (const char *path, int mode)
+{
+    return access(path, mode);
+}
+
+int access (const char *path, int mode)
+{
+    if (!path) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    DWORD attributes = GetFileAttributesA(path);
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        errno = ENOENT;
+        return -1;
+    }
+
+    switch (mode) {
+        case 0:
+            // Check for existence, the above code already does that
+            return 0;
+        case 2:
+            // Check for write-only
+            // FIXME
+            return -1;
+        case 4:
+            if ((attributes & FILE_ATTRIBUTE_READONLY) != 0) {
+                return 0;
+            }
+            errno = EACCES;
+            return -1;
+        case 6:
+            if ((attributes & FILE_ATTRIBUTE_READONLY) == 0) {
+                return 0;
+            }
+            errno = EACCES;
+            return -1;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+}
