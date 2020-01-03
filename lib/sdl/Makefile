@@ -40,3 +40,25 @@ clean-sdl_ttf:
 	           $(FREETYPE_OBJS) \
 	           $(NXDK_DIR)/lib/libSDL_ttf.lib \
 	           $(NXDK_DIR)/lib/libfreetype.lib
+
+LIBSDLIMG_DIR = $(NXDK_DIR)/lib/sdl/SDL_image
+LIBSDLIMG_SRCS = $(LIBSDLIMG_DIR)/IMG.c \
+                 $(LIBSDLIMG_DIR)/IMG_png.c \
+                 $(LIBSDLIMG_DIR)/IMG_bmp.c \
+                 $(LIBSDLIMG_DIR)/IMG_gif.c \
+                 $(LIBSDLIMG_DIR)/IMG_jpg.c \
+                 $(LIBSDLIMG_DIR)/IMG_lbm.c \
+                 $(LIBSDLIMG_DIR)/IMG_pcx.c \
+                 $(LIBSDLIMG_DIR)/IMG_pnm.c \
+                 $(LIBSDLIMG_DIR)/IMG_svg.c \
+                 $(LIBSDLIMG_DIR)/IMG_tga.c \
+                 $(LIBSDLIMG_DIR)/IMG_tif.c \
+                 $(LIBSDLIMG_DIR)/IMG_webp.c \
+                 $(LIBSDLIMG_DIR)/IMG_WIC.c \
+                 $(LIBSDLIMG_DIR)/IMG_xcf.c \
+                 $(LIBSDLIMG_DIR)/IMG_xpm.c \
+                 $(LIBSDLIMG_DIR)/IMG_xv.c \
+                 $(LIBSDLIMG_DIR)/IMG_xxx.c
+
+SRCS += $(LIBSDLIMG_SRCS)
+CFLAGS += -isystem $(LIBSDLIMG_DIR) -DLOAD_BMP -DLOAD_GIF -DLOAD_JPG -DLOAD_LBM -DLOAD_PCX -DLOAD_PNG -DLOAD_PNM -DLOAD_TGA -DLOAD_XCF -DLOAD_XPM -DLOAD_XV -DLOAD_XXX
