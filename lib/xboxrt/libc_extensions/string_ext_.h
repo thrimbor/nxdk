@@ -9,6 +9,8 @@ static char *_strdup (const char *s)
     return strdup(s);
 }
 
+size_t strnlen (const char *s, size_t maxlen);
+
 #ifdef __cplusplus
 }
 #endif
