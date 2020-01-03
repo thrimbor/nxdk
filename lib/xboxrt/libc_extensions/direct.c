@@ -1,7 +1,7 @@
 #include <direct.h>
 #include <windows.h>
 
-int _mkdir (const char *dirname)
+int mkdir (const char *dirname)
 {
     BOOL success = CreateDirectoryA(dirname, NULL);
 
