@@ -13,4 +13,7 @@ int write (int fd, const void *buffer, unsigned int count);
 #define _close close
 int close (int fd);
 
+#define _unlink unlink
+int unlink (const char *filename);
+
 #endif

@@ -138,3 +138,16 @@ int write (int fd, const void *buf, unsigned int count)
 
     return bytesWritten;
 }
+
+int unlink (const char *filename)
+{
+    BOOL ret = DeleteFileA(filename);
+
+    if (!ret) {
+        // FIXME: Needs the PDCLib-PR to work!
+        //_PDCLIB_w32errno();
+        return -1;
+    }
+
+    return 0;
+}
