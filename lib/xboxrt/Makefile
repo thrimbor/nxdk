@@ -1,4 +1,7 @@
 SRCS += \
+	$(NXDK_DIR)/lib/xboxrt/libc_extensions/io.c \
+	$(NXDK_DIR)/lib/xboxrt/libc_extensions/direct.c \
+	$(NXDK_DIR)/lib/xboxrt/libc_extensions/dirent.c \
 	$(NXDK_DIR)/lib/xboxrt/libc_extensions/stat.c \
 	$(NXDK_DIR)/lib/xboxrt/libc_extensions/strings.c \
 	$(NXDK_DIR)/lib/xboxrt/libc_extensions/wchar.c \
