@@ -9,3 +9,4 @@ include $(NXDK_DIR)/lib/usb/Makefile
 include $(NXDK_DIR)/lib/xboxrt/Makefile
 include $(NXDK_DIR)/lib/Makefile-zlib
 include $(NXDK_DIR)/lib/libpng/Makefile
+include $(NXDK_DIR)/lib/libjpeg/Makefile
