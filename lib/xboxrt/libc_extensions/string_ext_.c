@@ -27,3 +27,20 @@ size_t strnlen (const char *s, size_t maxlen)
 
     return len;
 }
+
+int stricmp (const char *s1, const char *s2)
+{
+    return strnicmp(s1, s2, 4096);
+}
+
+int strnicmp (const char *s1, const char *s2, size_t n)
+{
+    for (size_t pos = 0; pos < n; pos++) {
+        char c1 = tolower(*s1++);
+        char c2 = tolower(*s2++);
+        if (c1 < c2) return -1;
+        if (c1 > c2) return 1;
+        if (c1 == 0 || c2 == 0) break;
+    }
+    return 0;
+}
