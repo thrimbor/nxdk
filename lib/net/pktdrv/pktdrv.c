@@ -316,7 +316,7 @@ enum {
 
 #define NV_RX_DESCRIPTORVALID (1 << 16)
 #define NV_RX_MISSEDFRAME     (1 << 17)
-#define NV_RX_SUBSTRACT1      (1 << 18)
+#define NV_RX_SUBTRACT1       (1 << 18)
 #define NV_RX_ERROR1          (1 << 23)
 #define NV_RX_ERROR2          (1 << 24)
 #define NV_RX_ERROR3          (1 << 25)
