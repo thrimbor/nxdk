@@ -25,6 +25,7 @@
 
 #include "pktdrv.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -359,10 +360,16 @@ static int PktdrvRecvInterrupt(void)
         if ((flag & NV_RX_DESCRIPTORVALID) == 0) {
             // Not a received packet
         } else {
+            unsigned int length = flag & 0xFFFF;
             fatal = FALSE;
 
             if (flag & NV_RX_ERROR) {
-                if (flag & NV_RX_FRAMINGERR) { /* not fatal */ }
+                if (flag & NV_RX_FRAMINGERR) { /* not fatal */
+                    if (flag & NV_RX_SUBTRACT1) {
+                        assert(length > 0);
+                        length--;
+                    }
+                }
                 if (flag & NV_RX_OVERFLOW) { fatal = TRUE; }
                 if (flag & NV_RX_CRCERR) { fatal = TRUE; }
                 if (flag & NV_RX_ERROR4) { fatal = TRUE; }
@@ -374,11 +381,9 @@ static int PktdrvRecvInterrupt(void)
             if (!fatal) {
                 // Call user callback and warn that a packet has been received
                 // Phys Addr of packet is *p
-                // Length of packet is 1 up to 2046 bytes
-                // Length = ( (*((ULONG *)(p+4))) & 0x7FF ) + 1
                 handled = Pktdrv_Callback(
                     (unsigned char *) ((*((ULONG *)p)) - g_s->PhysicalMinusVirtual),
-                    (unsigned int) (((*((ULONG *)(p + 4))) & 0x7FF) + 1));
+                    length);
                 if (!handled) {
                     return n; // We probably lack space up there
                 } else {
