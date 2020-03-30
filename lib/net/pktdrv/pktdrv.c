@@ -660,7 +660,7 @@ static void __stdcall MyPktdrvDpc(		PKDPC Dpc,
 		REG(NvRegMIIStatus)=mii_status;
 		REG(NvRegIrqStatus)=irq_status;
 //uncomment this line if you want your callback to be called as soon as packet arrived
-//		PktdrvRecvInterrupt(); //Check if we received packets // (let them stock up)
+		PktdrvRecvInterrupt(); //Check if we received packets // (let them stock up)
 		PktdrvSendInterrupt(); //Check if we have a packet to send
 
 		if (irq_status & NVREG_IRQSTAT_BIT1EVENT)
