@@ -78,6 +78,8 @@ struct s_MyStructures {
 
 
 static int g_running = 0;
+static KEVENT g_rx_event;
+static HANDLE g_rx_thread;
 static struct s_MyStructures *g_s;
 static KINTERRUPT s_MyInterruptObject;
 
@@ -625,6 +627,7 @@ static void __stdcall MyPktdrvDpc(PKDPC Dpc, PVOID DeferredContext, PVOID System
 
     ULONG irq_status;
     ULONG mii_status;
+    BOOL signal_event = FALSE;
 
     if (g_running == 0) return;
 
@@ -637,8 +640,7 @@ static void __stdcall MyPktdrvDpc(PKDPC Dpc, PVOID DeferredContext, PVOID System
         }
         REG(NvRegMIIStatus) = mii_status;
         REG(NvRegIrqStatus) = irq_status;
-        // uncomment this line if you want your callback to be called as soon as packet arrived
-        // PktdrvRecvInterrupt(); // Check if we received packets // (let them stock up)
+        signal_event = TRUE; // Check if we received packets
         PktdrvSendInterrupt(); // Check if we have a packet to send
 
         if (irq_status & NVREG_IRQSTAT_BIT1EVENT) {
@@ -647,6 +649,10 @@ static void __stdcall MyPktdrvDpc(PKDPC Dpc, PVOID DeferredContext, PVOID System
         mii_status = REG(NvRegMIIStatus);
         irq_status = REG(NvRegIrqStatus);
     };
+
+    if (signal_event) {
+        KePulseEvent(&g_rx_event, 0, FALSE);
+    }
 
     REG(NvRegIrqMask) = NVREG_IRQ_LINK | NVREG_IRQ_TX_OK | NVREG_IRQ_TX_ERROR | NVREG_IRQ_RX_NOBUF | NVREG_IRQ_RX | NVREG_IRQ_RX_ERROR;
 
@@ -659,12 +665,30 @@ void Pktdrv_Quit(void)
 
     g_running = 0;
 
+    // Wait for RX thread
+    KePulseEvent(&g_rx_event, 0, FALSE);
+    NtWaitForSingleObject(g_rx_thread, FALSE, NULL);
+    NtClose(g_rx_thread);
+
     PktdrvStopSendRecv();
     PktdrvReset();
     KeDisconnectInterrupt(&s_MyInterruptObject);
 
     MmFreeContiguousMemory((void *)g_s->TxBufferDesc);
     free(g_s);
+}
+
+static void NTAPI rx_thread_func (PKSTART_ROUTINE StartRoutine, PVOID StartContext)
+{
+    (void)StartRoutine;
+    (void)StartContext;
+
+    while(g_running) {
+        KeWaitForSingleObject(&g_rx_event, Executive, KernelMode, FALSE, NULL);
+        Pktdrv_ReceivePackets();
+    }
+
+    PsTerminateSystemThread(0);
 }
 
 // Returns 1 if everything is ok
@@ -689,6 +713,7 @@ int Pktdrv_Init(void)
         return 0;
     }
 
+    KeInitializeEvent(&g_rx_event, SynchronizationEvent, FALSE);
 
     g_s->Vector = HalGetInterruptVector(PktdrvInterrupt, &g_s->IrqLevel);
 
@@ -828,6 +853,9 @@ int Pktdrv_Init(void)
     KeStallExecutionProcessor(50); // 50 micro seconds of busy-wait
 
     g_running = 1;
+
+    // RX thread only needs small stack and no TLS
+    PsCreateSystemThreadEx(&g_rx_thread, 0, 4096, 0, NULL, NULL, NULL, FALSE, FALSE, rx_thread_func);
 
     // XBOX specific (nForce specific)
     if (PhyInitialize(0, 0) != 0) { // Initialize transceiver
