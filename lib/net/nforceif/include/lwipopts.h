@@ -310,6 +310,24 @@
  */
 #define LWIP_TCP                        1
 
+/**
+ * TCP_MSS: TCP Maximum segment size. (chosen to be the maximum
+ * that can be transmitted over IPv6+PPPoE unfragmented)
+ * For the receive side, this MSS is advertised to the remote side
+ * when opening a connection. For the transmit size, this MSS sets
+ * an upper limit on the MSS advertised by the remote host.
+ */
+#define TCP_MSS                         1432
+
+/**
+ * TCP_WND: The size of a TCP window.  This must be at least
+ * (2 * TCP_MSS) for things to work well.
+ * ATTENTION: when using TCP_RCV_SCALE, TCP_WND is the total size
+ * with scaling applied. Maximum window value in the TCP header
+ * will be TCP_WND >> TCP_RCV_SCALE
+ */
+#define TCP_WND                         (45 * TCP_MSS)
+
 /*
    ----------------------------------
    ---------- Pbuf options ----------
@@ -323,6 +341,18 @@
 #define PBUF_LINK_HLEN                  16
 
 /*
+   ------------------------------------------------
+   ---------- Network Interfaces options ----------
+   ------------------------------------------------
+*/
+
+/**
+ * LWIP_SINGLE_NETIF==1: use a single netif only. This is the common case for
+ * small real-life targets. Some code like routing etc. can be left out.
+ */
+#define LWIP_SINGLE_NETIF               1
+
+/*
    ------------------------------------
    ---------- LOOPIF options ----------
    ------------------------------------
@@ -332,6 +362,25 @@
  */
 #define LWIP_HAVE_LOOPIF                0
 
+/*
+   ------------------------------------
+   ---------- Thread options ----------
+   ------------------------------------
+*/
+
+/**
+ * TCPIP_THREAD_STACKSIZE: The stack size used by the main tcpip thread.
+ * The stack size value itself is platform-dependent, but is passed to
+ * sys_thread_new() when the thread is created.
+ */
+#define TCPIP_THREAD_STACKSIZE          4096
+
+/**
+ * DEFAULT_THREAD_STACKSIZE: The stack size used by any other lwIP thread.
+ * The stack size value itself is platform-dependent, but is passed to
+ * sys_thread_new() when the thread is created.
+ */
+#define DEFAULT_THREAD_STACKSIZE        4096
 
 /*
    ----------------------------------------------
