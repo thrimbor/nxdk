@@ -185,6 +185,18 @@ low_level_output(struct netif *netif, struct pbuf *p)
     return ERR_OK;
 }
 
+typedef struct
+{
+    struct pbuf_custom p;
+} rx_pbuf_t;
+
+LWIP_MEMPOOL_DECLARE(RX_POOL, 32, sizeof(rx_pbuf_t), "Zero-copy RX PBUF pool");
+
+void rx_pbuf_free_custom(struct pbuf *p)
+{
+    (void)p;
+}
+
 /**
  * Should allocate a pbuf and transfer the bytes of the incoming
  * packet from the interface into the pbuf.
@@ -197,53 +209,22 @@ static struct pbuf *
 low_level_input(struct netif *netif, unsigned char *packetaddr, unsigned int size)
 {
     struct nforceif *nforceif = netif->state;
-    struct pbuf *p, *q;
-    u16_t len;
 
-    unsigned long buf_pos = 0;
+    rx_pbuf_t *prealloced_pbuf = (rx_pbuf_t *)LWIP_MEMPOOL_ALLOC(RX_POOL);
+    prealloced_pbuf->p.custom_free_function = rx_pbuf_free_custom;
 
-    /* Obtain the size of the packet and put it into the "len"
-       variable. */
-    len = size;
-
-#if ETH_PAD_SIZE
-    len += ETH_PAD_SIZE; /* allow room for Ethernet padding */
-#endif
-
-    /* We allocate a pbuf chain of pbufs from the pool. */
-    p = pbuf_alloc(PBUF_RAW, len, PBUF_POOL);
+    struct pbuf *p = pbuf_alloced_custom(PBUF_RAW,
+        size,
+        PBUF_REF,
+        &prealloced_pbuf->p,
+        packetaddr,
+        size);
 
     if (p != NULL) {
-
-#if ETH_PAD_SIZE
-        pbuf_header(p, -ETH_PAD_SIZE); /* drop the padding word */
-#endif
-
-        /* We iterate over the pbuf chain until we have read the entire
-         * packet into the pbuf. */
-        for (q = p; (q != NULL) && (buf_pos < len); q = q->next) {
-            /* Read enough bytes to fill this pbuf in the chain. The
-             * available data in the pbuf is given by the q->len
-             * variable.
-             * This does not necessarily have to be a memcpy, you can also preallocate
-             * pbufs for a DMA-enabled MAC and after receiving truncate it to the
-             * actually received size. In this case, ensure the tot_len member of the
-             * pbuf is the sum of the chained pbuf len members.
-             */
-            // read data into(q->payload, q->len);
-            memcpy(q->payload, packetaddr+buf_pos, q->len);
-            buf_pos += q->len;
-        }
-
-        // acknowledge that packet has been read();
-
-#if ETH_PAD_SIZE
-        pbuf_header(p, ETH_PAD_SIZE); /* reclaim the padding word */
-#endif
-
+        // acknowledge that packet has been read
         LINK_STATS_INC(link.recv);
     } else {
-        // drop packet();
+        // drop packet
         LINK_STATS_INC(link.memerr);
         LINK_STATS_INC(link.drop);
     }
