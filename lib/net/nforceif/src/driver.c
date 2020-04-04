@@ -51,8 +51,7 @@
 #define LINK_SPEED_OF_YOUR_NETIF_IN_BPS 100*1000*1000 /* 100 Mbps */
 #include <xboxkrnl/xboxkrnl.h>
 
-static unsigned int g_rx_buffer_packetsize;
-static unsigned char *g_rx_buffer, *g_tx_buffer;
+static unsigned char *g_tx_buffer;
 extern struct netif *g_pnetif;
 
 /**
@@ -67,13 +66,11 @@ struct nforceif {
 };
 
 /* Forward declarations. */
-void nforceif_input(struct netif *netif);
+void nforceif_input(struct netif *netif, unsigned char *packetaddr, unsigned int size);
 
 int Pktdrv_Callback(unsigned char *packetaddr, unsigned int size)
 {
-    g_rx_buffer_packetsize = size;
-    memcpy(g_rx_buffer, packetaddr, g_rx_buffer_packetsize);
-    nforceif_input(g_pnetif);
+    nforceif_input(g_pnetif, packetaddr, size);
     return 1;
 }
 
@@ -122,14 +119,6 @@ low_level_init(struct netif *netif)
 
     /* Do whatever else is needed to initialize interface. */
 
-    // This is a temporary buffer, independent of hardware; cache is fine
-    g_rx_buffer = (unsigned char *)MmAllocateContiguousMemoryEx(
-        1520,
-        0,          // lowest acceptable
-        0xFFFFFFFF, // highest acceptable
-        0,          // no need to align to specific boundaries multiple
-        PAGE_READWRITE);
-
     // This will be passed to the hardware, so it must be uncached
     g_tx_buffer = (unsigned char *)MmAllocateContiguousMemoryEx(
         1520,
@@ -138,7 +127,7 @@ low_level_init(struct netif *netif)
         0,          // no need to align to specific boundaries multiple
         PAGE_READWRITE | PAGE_NOCACHE);
 
-    if (!g_rx_buffer || !g_tx_buffer) {
+    if (!g_tx_buffer) {
         debugPrint("Failed to allocate packet buffer!\n");
         abort();
     }
@@ -205,7 +194,7 @@ low_level_output(struct netif *netif, struct pbuf *p)
  *         NULL on memory error
  */
 static struct pbuf *
-low_level_input(struct netif *netif)
+low_level_input(struct netif *netif, unsigned char *packetaddr, unsigned int size)
 {
     struct nforceif *nforceif = netif->state;
     struct pbuf *p, *q;
@@ -215,7 +204,7 @@ low_level_input(struct netif *netif)
 
     /* Obtain the size of the packet and put it into the "len"
        variable. */
-    len = g_rx_buffer_packetsize;
+    len = size;
 
 #if ETH_PAD_SIZE
     len += ETH_PAD_SIZE; /* allow room for Ethernet padding */
@@ -242,7 +231,7 @@ low_level_input(struct netif *netif)
              * pbuf is the sum of the chained pbuf len members.
              */
             // read data into(q->payload, q->len);
-            memcpy(q->payload, g_rx_buffer+buf_pos, q->len);
+            memcpy(q->payload, packetaddr+buf_pos, q->len);
             buf_pos += q->len;
         }
 
@@ -271,8 +260,8 @@ low_level_input(struct netif *netif)
  *
  * @param netif the lwip network interface structure for this nforceif
  */
-void // FIXME make static
-nforceif_input(struct netif *netif)
+static void // FIXME make static
+nforceif_input(struct netif *netif, unsigned char *packetaddr, unsigned int size)
 {
     struct nforceif *nforceif;
     struct eth_hdr *ethhdr;
@@ -281,7 +270,7 @@ nforceif_input(struct netif *netif)
     nforceif = netif->state;
 
     /* move received packet into a new pbuf */
-    p = low_level_input(netif);
+    p = low_level_input(netif, packetaddr, size);
     /* no packet could be read, silently ignore this */
     if (p == NULL) return;
     /* points to packet payload, which starts with an Ethernet header */
