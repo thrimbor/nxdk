@@ -737,18 +737,10 @@ int Pktdrv_Init(void)
     // allocates n+1+1 DMA buffers 2048 bytes each
     buffers_addr = (ULONG)MmAllocateContiguousMemoryEx(
             buffers_total_size,
-            0,       // lowest acceptable
-            0x10000, // highest acceptable
-            0,       // no need to align to specific boundaries multiple
-            PAGE_READWRITE | PAGE_NOCACHE);
-    if (!buffers_addr) {
-        buffers_addr = (ULONG)MmAllocateContiguousMemoryEx(
-            buffers_total_size,
             0,          // lowest acceptable
             0xFFFFFFFF, // highest acceptable
             0,          // no need to align to specific boundaries multiple
-            PAGE_READWRITE | PAGE_NOCACHE);
-    }
+            PAGE_READWRITE);
     if (!buffers_addr) {
         debugPrint("Can't allocate DMA reception buffers\n");
         free(g_s);
