@@ -185,16 +185,19 @@ low_level_output(struct netif *netif, struct pbuf *p)
     return ERR_OK;
 }
 
+_Static_assert(LWIP_SUPPORT_CUSTOM_PBUF, "LWIP_SUPPORT_CUSTOM_PBUF needs to be enabled");
+
 typedef struct
 {
     struct pbuf_custom p;
 } rx_pbuf_t;
 
-LWIP_MEMPOOL_DECLARE(RX_POOL, 32, sizeof(rx_pbuf_t), "Zero-copy RX PBUF pool");
+LWIP_MEMPOOL_DECLARE(RX_POOL, 1, sizeof(rx_pbuf_t), "Zero-copy RX PBUF pool");
 
 void rx_pbuf_free_custom(struct pbuf *p)
 {
-    (void)p;
+    rx_pbuf_t *prealloced_pbuf = (rx_pbuf_t *)p;
+    LWIP_MEMPOOL_FREE(RX_POOL, prealloced_pbuf);
 }
 
 /**
