@@ -32,6 +32,7 @@
  * Xbox Support: Matt Borgerson
  *
  */
+#include <assert.h>
 #include <lwip/opt.h>
 #include <lwip/def.h>
 #include <lwip/mem.h>
@@ -51,7 +52,6 @@
 #define LINK_SPEED_OF_YOUR_NETIF_IN_BPS 100*1000*1000 /* 100 Mbps */
 #include <xboxkrnl/xboxkrnl.h>
 
-static unsigned char *g_tx_buffer;
 extern struct netif *g_pnetif;
 
 /**
@@ -116,21 +116,18 @@ low_level_init(struct netif *netif)
         netif->mld_mac_filter(netif, &ip6_allnodes_ll, NETIF_ADD_MAC_FILTER);
     }
 #endif /* LWIP_IPV6 && LWIP_IPV6_MLD */
+}
 
-    /* Do whatever else is needed to initialize interface. */
-
-    // This will be passed to the hardware, so it must be uncached
-    g_tx_buffer = (unsigned char *)MmAllocateContiguousMemoryEx(
-        1520,
-        0,          // lowest acceptable
-        0xFFFFFFFF, // highest acceptable
-        0,          // no need to align to specific boundaries multiple
-        PAGE_READWRITE | PAGE_NOCACHE);
-
-    if (!g_tx_buffer) {
-        debugPrint("Failed to allocate packet buffer!\n");
-        abort();
-    }
+/**
+ * This function gets registered as callback function to free pbufs after the
+ * NIC driver is done sending their contents.
+ *
+ * @param userdata the pbuf address, supplied by low_level_output
+ */
+void free_pbuf_callback(void *userdata)
+{
+    struct pbuf *p = (struct pbuf *)userdata;
+    pbuf_free(p);
 }
 
 /**
@@ -152,33 +149,48 @@ low_level_init(struct netif *netif)
 static err_t
 low_level_output(struct netif *netif, struct pbuf *p)
 {
+    // FIXME: This doesn't handle PBUFs crossing page borders yet!
     struct nforceif *nforceif = netif->state;
-    struct pbuf *q;
 
-    unsigned long buf_pos = 0;
+    int pbufCount = 0;
+    for (struct pbuf *q = p; q != NULL; q = q->next) {
+        pbufCount++;
+    }
 
-    // initiate transfer();
-    while (Pktdrv_GetQueuedTxPkts() > 0) /* spin */; // FIXME!
+    // Sanity checks
+    assert(pbufCount > 0);
+    assert(pbufCount <= 4);
+    if (pbufCount == 0 || pbufCount > 4) {
+        return ERR_MEM;
+    }
+
+    Pktdrv_AcquireTxDescriptors(pbufCount);
 
 #if ETH_PAD_SIZE
     pbuf_header(p, -ETH_PAD_SIZE); /* drop the padding word */
 #endif
 
-    for (q = p; q != NULL; q = q->next) {
-        /* Send the data from the pbuf to the interface, one pbuf at a
-           time. The size of the data in each pbuf is kept in the ->len
-           variable. */
-        // send data from(q->payload, q->len);
-        memcpy(g_tx_buffer + buf_pos, q->payload, q->len);
-        buf_pos += q->len;
+    Pktdrv_Descriptor_t descriptors[4];
+
+    int i = 0;
+    for (struct pbuf *q = p; q != NULL; q = q->next) {
+        descriptors[i].addr = q->payload;
+        descriptors[i].length = q->len;
+        descriptors[i].callback = NULL;
+        i++;
     }
 
-    // signal that packet should be sent();
-    Pktdrv_SendPacket(g_tx_buffer, buf_pos);
+    descriptors[pbufCount - 1].userdata = (void *)p;
+    descriptors[pbufCount - 1].callback = free_pbuf_callback;
 
 #if ETH_PAD_SIZE
     pbuf_header(p, ETH_PAD_SIZE); /* reclaim the padding word */
 #endif
+
+    // Increase pbuf refcount so they don't get freed while the NIC requires them
+    pbuf_ref(p);
+
+    Pktdrv_SubmitTxDescriptors(descriptors, pbufCount);
 
     LINK_STATS_INC(link.xmit);
 

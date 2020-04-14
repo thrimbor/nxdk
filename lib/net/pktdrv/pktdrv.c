@@ -26,6 +26,7 @@
 #include "pktdrv.h"
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,6 +75,7 @@ struct s_MyStructures {
     ULONG    TxBufferNext;    // = buffers_addr; //Points to next packet to send entry
     ULONG    TxBufferTail;    // = buffers_addr + 8 * g_s->NbrTxBuffers - 8;
     ULONG    QueuedTxPkts;
+    KSEMAPHORE FreeTxDescs;
 };
 
 
@@ -82,6 +84,16 @@ static KEVENT g_rx_event;
 static HANDLE g_rx_thread;
 static struct s_MyStructures *g_s;
 static KINTERRUPT s_MyInterruptObject;
+
+
+struct tx_misc_t
+{
+    void *bufAddr;
+    tx_callback_t callback;
+    void *userdata;
+};
+
+struct tx_misc_t tx_misc[NBBUFF];
 
 
 
@@ -414,26 +426,40 @@ static BOOLEAN PktdrvSendReady(void)
     return (g_s->QueuedTxPkts != g_s->NbrTxBuffers);
 }
 
-// Checks for a patcket to send
 static void PktdrvSendInterrupt(void)
 {
-    ULONG p, flag;
+    int freedTxDescs = 0;
 
-    // Before we send any packet, let's check if last packets have been sent
-
+    // Clean up all TX descriptors processed by the NIC
     while (g_s->TxBufferLast != g_s->TxBufferNext) {
-        p = g_s->TxBufferLast;
-        flag = *((ULONG *)(p + 4));
+        volatile uint32_t *descriptor = (uint32_t *)g_s->TxBufferLast;
+        uint32_t flagsAndLength = descriptor[1];
 
-        if ((flag & NV_TX_VALID) == 0) {
+        if ((flagsAndLength & NV_TX_VALID) == 0) {
             // Packet is gone, reduce counter and check next one.
             // Note that errors and actual number of bytes sent
             // can be read from flag right now and right here!
             // Actual number is higher because of padding...
+
+            int descriptorIndex = ((uint32_t)descriptor - g_s->TxBufferDesc) / 8;
+
+            // Buffers get locked before sending, and unlocked after sending
+            MmLockUnlockBufferPages(tx_misc[descriptorIndex].bufAddr, (flagsAndLength & 0xFFFF) + 1, TRUE);
+
             g_s->QueuedTxPkts--;
-            // Let's cleanup
-            *((ULONG *)p) = 0;
-            *((ULONG *)(p + 4)) = 0;
+
+            // Count the freed descriptors for signaling the Semaphore later
+            freedTxDescs++;
+
+            // Clear the descriptor (FIXME: Probably not necessary?)
+            descriptor[0] = 0;
+            descriptor[1] = 0;
+
+            // Call the callback if one was registered for this descriptor
+            if (tx_misc[descriptorIndex].callback) {
+                tx_misc[descriptorIndex].callback(tx_misc[descriptorIndex].userdata);
+            }
+
             // Have TxBufferLast point to next entry
             if (g_s->TxBufferLast == g_s->TxBufferTail) {
                 g_s->TxBufferLast = g_s->TxBufferDesc;
@@ -444,36 +470,10 @@ static void PktdrvSendInterrupt(void)
             break; // packet not sent already, we will check later
         }
     }
-}
 
-static void PktdrvSendPacket(unsigned char *buffer, int length)
-{
-    ULONG p;
-
-    if (PktdrvSendReady()) { // Do we have room in the Tx ring?
-        // p points to next free entry of Tx ring descriptor
-        p = g_s->TxBufferNext;
-        MmLockUnlockBufferPages((PVOID)buffer, length, 0);
-
-        *((ULONG *)p) = MmGetPhysicalAddress(buffer);
-        *((ULONG *)(p + 4)) = (length - 1) | NV_TX_VALID | NV_TX_LASTPACKET;
-
-        g_s->QueuedTxPkts++;
-
-        // Have TxBufferNext point to next entry
-        if (g_s->TxBufferNext == g_s->TxBufferTail) { // return to start of ring?
-            g_s->TxBufferNext = g_s->TxBufferDesc;
-        } else {
-            g_s->TxBufferNext += 8;
-        }
-
-        REG(NvRegTxRxControl) = NVREG_TXRXCTL_KICK;
-    } else {
-        // Tx ring is full
-        // User should do : while(Xnet_GetQueuedPkts()>=n) { /*wait*/ }; then send pkt
-        // That will prevent the loss of sent packet right here
-        // Where n is the number of buffers (ring) where pending outcoming packets are
-        // stored. In most case n=1 (just one buffer is used to send 1 packet at a time)
+    if (freedTxDescs > 0) {
+        // Signal the Semaphore to wake sender threads
+        KeReleaseSemaphore(&g_s->FreeTxDescs, IO_NETWORK_INCREMENT, freedTxDescs, NULL);
     }
 }
 
@@ -729,6 +729,8 @@ int Pktdrv_Init(void)
     g_s->NbrRxBuffers = MIN(n, 256);
     g_s->NbrTxBuffers = MIN(n, 256);
 
+    KeInitializeSemaphore(&g_s->FreeTxDescs, g_s->NbrTxBuffers, g_s->NbrTxBuffers);
+
     // Rx ring will point to the pool of n allocated buffers
     // Tx ring is empty at startup may point to any contiguous buffer physical address
 
@@ -894,17 +896,6 @@ int Pktdrv_ReceivePackets(void)
     return 0;
 }
 
-void Pktdrv_SendPacket(unsigned char *buffer, int length)
-{
-    if (g_running) {
-        PktdrvSendInterrupt();
-        // if QueuedTxPkts>=n (n=number of outgoing buffers -ring- in calling app)
-        // then packet will not be sent (app has to wait until QueuedTxPkts<n)
-        PktdrvSendPacket(buffer, length);
-    }
-}
-
-
 void Pktdrv_GetEthernetAddr(unsigned char *address)
 {
     if ((address) && (g_running)) {
@@ -920,4 +911,100 @@ int Pktdrv_GetQueuedTxPkts(void)
     } else {
         return 0;
     }
+}
+
+int Pktdrv_AcquireTxDescriptors(unsigned int count)
+{
+    NTSTATUS status;
+    LARGE_INTEGER timeout = {.QuadPart = 0};
+
+    // Sanity check
+    assert(count > 0);
+    // Avoid excessive requests
+    assert(count <= 4);
+
+    while(true) {
+        // Wait for a TX descriptor to become available
+        status = KeWaitForSingleObject(&g_s->FreeTxDescs, Executive, KernelMode, FALSE, NULL);
+        if (!NT_SUCCESS(status)) {
+            return false;
+        }
+
+        for (unsigned int i = 0; i < count - 1; i++) {
+            // Try to acquire the remaining descriptors without sleeping
+            status = KeWaitForSingleObject(&g_s->FreeTxDescs, Executive, KernelMode, FALSE, &timeout);
+            if (!NT_SUCCESS(status) || status == STATUS_TIMEOUT) {
+                // Couldn't acquire all at once, back off
+                KeReleaseSemaphore(&g_s->FreeTxDescs, IO_NETWORK_INCREMENT, i + 1, NULL);
+                if (status == STATUS_TIMEOUT) {
+                    // Sleep for 10 microseconds to avoid immediate re-locking
+                    LARGE_INTEGER duration;
+                    duration.QuadPart = -100;
+                    KeDelayExecutionThread(UserMode, FALSE, &duration);
+                    // Retry
+                    continue;
+                } else {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+}
+
+// FIXME: This should all probably use indices instead of pointers
+
+void Pktdrv_SubmitTxDescriptors(Pktdrv_Descriptor_t *buffers, unsigned int count)
+{
+    ULONG p[4];
+
+    // Sanity check
+    assert(count > 0);
+    // Avoid excessive requests
+    assert(count <= 4);
+
+    // Protect access to TX pointers
+    KIRQL irql = KeRaiseIrqlToDpcLevel();
+
+    for (unsigned int i = 0; i < count; i++) {
+        assert(PktdrvSendReady());
+
+        // Reserve this descriptor for this packet
+        p[i] = g_s->TxBufferNext;
+
+        // Have TxBufferNext point to the next entry
+        if (g_s->TxBufferNext == g_s->TxBufferTail) {
+            g_s->TxBufferNext = g_s->TxBufferDesc;
+        } else {
+            g_s->TxBufferNext += 8;
+        }
+    }
+
+    // TX pointer modifications done, unlock
+    KfLowerIrql(irql);
+
+    for (unsigned int i = 0; i < count; i++) {
+        int gi = (p[i] - g_s->TxBufferDesc) / 8;
+        tx_misc[gi].bufAddr = buffers[i].addr;
+        tx_misc[gi].userdata = buffers[i].userdata;
+        tx_misc[gi].callback = buffers[i].callback;
+    }
+
+    // Set up all reserved descriptors
+    for (unsigned int i = 0; i < count; i++) {
+        // Buffers get locked before sending, and unlocked after sending
+        MmLockUnlockBufferPages(buffers[i].addr, buffers[i].length, FALSE);
+        *((ULONG *)p[i]) = MmGetPhysicalAddress(buffers[i].addr);
+        *((ULONG *)(p[i] + 4)) = (buffers[i].length - 1) | (i != 0 ? NV_TX_VALID : 0);
+        g_s->QueuedTxPkts++;
+    }
+
+    // Terminate descriptor chain
+    *((ULONG *)(p[count - 1] + 4)) |= NV_TX_LASTPACKET;
+
+    // Enable first descriptor last to keep the NIC from sending incomplete packets
+    *((ULONG *)(p[0] + 4)) |= NV_TX_VALID;
+
+    REG(NvRegTxRxControl) = NVREG_TXRXCTL_KICK;
 }
