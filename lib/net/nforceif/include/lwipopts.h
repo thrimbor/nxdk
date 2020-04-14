@@ -340,6 +340,14 @@
  */
 #define PBUF_LINK_HLEN                  16
 
+/** LWIP_SUPPORT_CUSTOM_PBUF==1: Custom pbufs behave much like their pbuf type
+ * but they are allocated by external code (initialised by calling
+ * pbuf_alloced_custom()) and when pbuf_free gives up their last reference, they
+ * are freed by calling pbuf_custom->custom_free_function().
+ * Currently, the pbuf_custom code is only needed for one specific configuration
+ * of IP_FRAG, unless required by external driver/application code. */
+#define LWIP_SUPPORT_CUSTOM_PBUF 1
+
 /*
    ------------------------------------------------
    ---------- Network Interfaces options ----------
