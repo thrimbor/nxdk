@@ -47,6 +47,8 @@
 #define IFNAME0 'x'
 #define IFNAME1 'b'
 
+#include <nvnetdrv/nvnetdrv.h>
+
 #include "../../pktdrv/pktdrv.h"
 #define LINK_SPEED_OF_YOUR_NETIF_IN_BPS 100*1000*1000 /* 100 Mbps */
 #include <xboxkrnl/xboxkrnl.h>
@@ -77,6 +79,12 @@ int Pktdrv_Callback(unsigned char *packetaddr, unsigned int size)
   return 1;
 }
 
+void rx_callback(void *buffer, uint16_t length)
+{
+  // ignore packet, just put back buffer for now
+  nvnetdrv_rx_queue_buffer(buffer);
+}
+
 /**
  * In this function, the hardware should be initialized.
  * Called from nforceif_init().
@@ -89,9 +97,9 @@ low_level_init(struct netif *netif)
 {
   struct nforceif *nforceif = netif->state;
 
-  if (!Pktdrv_Init())
+  if (nvnetdrv_init(64, rx_callback) < 0)
   {
-    debugPrint("Failed to initialize packet driver!\n");
+    debugPrint("Failed to initialize NIC driver!\n");
     abort();
   }
 
@@ -99,7 +107,7 @@ low_level_init(struct netif *netif)
   netif->hwaddr_len = ETHARP_HWADDR_LEN;
 
   /* set MAC hardware address */
-  Pktdrv_GetEthernetAddr(netif->hwaddr);
+  memcpy(netif->hwaddr, nvnetdrv_get_ethernet_addr(), 6);
 
   /* maximum transfer unit */
   netif->mtu = 1500;
