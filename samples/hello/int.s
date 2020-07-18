@@ -1,0 +1,19 @@
+.globl _dbg_output_isr_stub
+_dbg_output_isr_stub:
+    pushl %ebp
+    pushl %edi
+    pushl %esi
+    pushl %edx
+    pushl %ecx
+    pushl %ebx
+    pushl %eax
+    call _dbg_output
+    popl %eax
+    popl %ebx
+    popl %ecx
+    popl %edx
+    popl %esi
+    popl %edi
+    popl %ebp
+.extern dbg_output_original_isr_addr
+    jmp *_dbg_output_original_isr_addr
