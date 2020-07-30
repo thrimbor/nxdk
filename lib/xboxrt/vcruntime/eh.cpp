@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdlib.h>
 #include <eh.h>
 
 void __cdecl __ExceptionPtrCreate (void*)
@@ -55,16 +56,35 @@ void __cdecl __ExceptionPtrCopyException (void*, const void*, const void*)
 
 extern "C"
 {
+    static terminate_handler current_terminate_handler = NULL;
+
     terminate_handler __cdecl set_terminate (terminate_handler _NewTerminateHandler) throw()
     {
-        assert(0);
-        return 0;
+        terminate_handler old_handler = current_terminate_handler;
+        current_terminate_handler = _NewTerminateHandler;
+        return old_handler;
     }
 
     terminate_handler __cdecl _get_terminate ()
     {
+        return current_terminate_handler;
+    }
+
+    void __cdecl terminate ()
+    {
+        if (current_terminate_handler) {
+            current_terminate_handler();
+        }
+
+        // Help finding the issue when running a debug build
         assert(0);
-        return 0;
+
+        abort();
+    }
+
+    void __cdecl __std_terminate ()
+    {
+        terminate();
     }
 
     unexpected_handler __cdecl set_unexpected (unexpected_handler _NewUnexpectedHandler) throw()
