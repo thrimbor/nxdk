@@ -6,6 +6,7 @@ extern "C"
     typedef void (__cdecl *terminate_handler)();
     terminate_handler __cdecl set_terminate (terminate_handler _NewTerminateHandler) throw();
     terminate_handler __cdecl _get_terminate ();
+    void __cdecl terminate ();
 
     typedef void (__cdecl *unexpected_handler)();
     unexpected_handler __cdecl set_unexpected (unexpected_handler _NewUnexpectedHandler) throw();
