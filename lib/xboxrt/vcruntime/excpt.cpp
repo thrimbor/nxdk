@@ -199,3 +199,10 @@ __declspec(noreturn) extern "C" void __stdcall _CxxThrowException (void *pExcept
     exceptionRecord.ExceptionInformation[1] = (ULONG_PTR)pThrowInfo;
     RtlRaiseException(&exceptionRecord);
 }
+
+extern "C" void CxxFrameHandlerVC8 (PEXCEPTION_RECORD *pExcept, EXCEPTION_REGISTRATION *pRN, CONTEXT *pContext, void *pDC, FuncInfo *functionInfo)
+{
+    DbgPrint("frame handler reached!\n");
+    asm cli;
+    asm hlt;
+}
