@@ -18,13 +18,21 @@ XBOXRT_SRCS := \
 	$(NXDK_DIR)/lib/xboxrt/c_runtime/_fltused.c \
 	$(NXDK_DIR)/lib/xboxrt/c_runtime/check_stack.c \
 	$(NXDK_DIR)/lib/xboxrt/c_runtime/chkstk.s \
+	$(NXDK_DIR)/lib/xboxrt/vcruntime/dynamic_cast.cpp \
 	$(NXDK_DIR)/lib/xboxrt/vcruntime/purecall.c \
 	$(NXDK_DIR)/lib/xboxrt/vcruntime/threadsafe_statics.c \
 	$(NXDK_DIR)/lib/xboxrt/vcruntime/vcruntime_exception.cpp \
 	$(NXDK_DIR)/lib/xboxrt/vcruntime/vcruntime_typeinfo.cpp \
-	$(NXDK_DIR)/lib/xboxrt/vcruntime/eh.cpp
+	$(NXDK_DIR)/lib/xboxrt/vcruntime/eh.cpp \
+	$(NXDK_DIR)/lib/xboxrt/vcruntime/excpt.cpp \
+	$(NXDK_DIR)/lib/xboxrt/vcruntime/framehandler.s
 
 XBOXRT_OBJS = $(addsuffix .obj, $(basename $(XBOXRT_SRCS)))
+
+# This file needs to be always built with -fno-rtti because it contains the
+# type_info class. If the parameter is missing, clang will generate an invalid
+# reference from type_info to its own vftable.
+$(NXDK_DIR)/lib/xboxrt/vcruntime/vcruntime_typeinfo.obj: NXDK_CXXFLAGS += -fno-rtti
 
 $(NXDK_DIR)/lib/libxboxrt.lib: $(XBOXRT_OBJS)
 
