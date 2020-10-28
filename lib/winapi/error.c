@@ -1,14 +1,13 @@
 #include <winbase.h>
 #include <threads.h>
-
-static thread_local DWORD lastError = 0;
+#include <fibersapi_internal_.h>
 
 DWORD GetLastError (void)
 {
-    return lastError;
+    return fls_get_aux_thread_data()->lastError;
 }
 
 void SetLastError (DWORD error)
 {
-    lastError = error;
+    fls_get_aux_thread_data()->lastError = error;
 }

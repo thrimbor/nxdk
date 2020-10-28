@@ -2,18 +2,10 @@
 #include <assert.h>
 #include <stdint.h>
 #include <threads.h>
+#include <fibersapi_internal_.h>
 
-// Each thread gets a node to keep track of its FLS data.
-// Threads must register themselves, so their FLS nodes can be put into a list
-// for proper handling of destructors.
-typedef struct fls_node_t_
-{
-    LIST_ENTRY listEntry;
-    PVOID slots[FLS_MAXIMUM_AVAILABLE];
-} fls_node_t;
 
 static CRITICAL_SECTION fls_lock;
-static thread_local fls_node_t fls_node;
 static LIST_ENTRY fls_nodes_list;
 static uint32_t fls_bitmap[FLS_MAXIMUM_AVAILABLE / 32];
 static PFLS_CALLBACK_FUNCTION fls_dtors[FLS_MAXIMUM_AVAILABLE];
@@ -25,18 +17,26 @@ __attribute__((constructor)) static VOID fls_init (VOID)
     InitializeListHead(&fls_nodes_list);
 }
 
+fls_aux_thread_data_t *fls_get_aux_thread_data (VOID)
+{
+    PETHREAD t = (PETHREAD)KeGetCurrentThread();
+    return (fls_aux_thread_data_t *)(t+1);
+}
+
 VOID fls_register_thread (VOID)
 {
     EnterCriticalSection(&fls_lock);
-    InsertTailList(&fls_nodes_list, &fls_node.listEntry);
+    InsertTailList(&fls_nodes_list, &fls_get_aux_thread_data()->fls_node.listEntry);
     LeaveCriticalSection(&fls_lock);
 }
 
 VOID fls_unregister_thread (VOID)
 {
+    fls_aux_thread_data_t *auxdata = fls_get_aux_thread_data();
+
     EnterCriticalSection(&fls_lock);
 
-    RemoveEntryList(&fls_node.listEntry);
+    RemoveEntryList(&auxdata->fls_node.listEntry);
 
     // If this thread used FLS, we need to run destructors to clean up
     for (DWORD dwFlsIndex = 0; dwFlsIndex < FLS_MAXIMUM_AVAILABLE; dwFlsIndex++) {
@@ -48,8 +48,8 @@ VOID fls_unregister_thread (VOID)
 
         if (fls_bitmap[dwFlsIndex / 32] & (1 << (dwFlsIndex % 32))) {
             // This slot is allocated, if we have data, we must run a destructor
-            if (fls_dtors[dwFlsIndex] != NULL && fls_node.slots[dwFlsIndex] != NULL) {
-                fls_dtors[dwFlsIndex](fls_node.slots[dwFlsIndex]);
+            if (fls_dtors[dwFlsIndex] != NULL && auxdata->fls_node.slots[dwFlsIndex] != NULL) {
+                fls_dtors[dwFlsIndex](auxdata->fls_node.slots[dwFlsIndex]);
             }
         }
     }
@@ -119,7 +119,7 @@ PVOID FlsGetValue (DWORD dwFlsIndex)
     assert(dwFlsIndex < FLS_MAXIMUM_AVAILABLE);
 
     if (dwFlsIndex < FLS_MAXIMUM_AVAILABLE) {
-        return fls_node.slots[dwFlsIndex];
+        return fls_get_aux_thread_data()->fls_node.slots[dwFlsIndex];
     }
 
     SetLastError(ERROR_INVALID_PARAMETER);
@@ -131,7 +131,7 @@ BOOL FlsSetValue (DWORD dwFlsIndex, PVOID lpFlsData)
     assert(dwFlsIndex < FLS_MAXIMUM_AVAILABLE);
 
     if (dwFlsIndex < FLS_MAXIMUM_AVAILABLE) {
-        fls_node.slots[dwFlsIndex] = lpFlsData;
+        fls_get_aux_thread_data()->fls_node.slots[dwFlsIndex] = lpFlsData;
         return TRUE;
     }
 

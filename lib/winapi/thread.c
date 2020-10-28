@@ -73,7 +73,7 @@ HANDLE CreateThread (LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwStackSiz
     tlssize = (tlssize + 15) & ~15;
     tlssize += 4;
 
-    status = PsCreateSystemThreadEx(&handle, 0, dwStackSize, tlssize, (PHANDLE)lpThreadId, (PKSTART_ROUTINE)lpStartAddress, lpParameter, dwCreationFlags & CREATE_SUSPENDED ? TRUE : FALSE, FALSE, WinapiThreadStartup);
+    status = PsCreateSystemThreadEx(&handle, sizeof(fls_aux_thread_data_t), dwStackSize, tlssize, (PHANDLE)lpThreadId, (PKSTART_ROUTINE)lpStartAddress, lpParameter, dwCreationFlags & CREATE_SUSPENDED ? TRUE : FALSE, FALSE, WinapiThreadStartup);
 
     if (!NT_SUCCESS(status)) {
         SetLastError(RtlNtStatusToDosError(status));
