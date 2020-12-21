@@ -439,6 +439,177 @@ DWORD SleepEx (DWORD dwMilliseconds, BOOL bAlertable)
     }
 }
 
+HANDLE CreateEventA (LPSECURITY_ATTRIBUTES lpEventAttributes, BOOL bManualReset, BOOL bInitialState, LPCSTR lpName)
+{
+    HANDLE handle;
+    ANSI_STRING obj_name;
+    OBJECT_ATTRIBUTES obj_attributes;
+    POBJECT_ATTRIBUTES obj_attributes_ptr;
+
+    if (lpName) {
+        RtlInitAnsiString(&obj_name, lpName);
+        InitializeObjectAttributes(&obj_attributes, &obj_name, OBJ_OPENIF, ObWin32NamedObjectsDirectory(), NULL);
+        obj_attributes_ptr = &obj_attributes;
+    } else {
+        obj_attributes_ptr = NULL;
+    }
+
+    NTSTATUS status = NtCreateEvent(&handle, obj_attributes_ptr, (bManualReset ? NotificationEvent : SynchronizationEvent), bInitialState);
+    if (!NT_SUCCESS(status)) {
+        SetLastError(RtlNtStatusToDosError(status));
+        return NULL;
+    }
+
+    if (status == STATUS_OBJECT_NAME_EXISTS) {
+        SetLastError(ERROR_ALREADY_EXISTS);
+    } else {
+        SetLastError(0);
+    }
+
+    return handle;
+}
+
+HANDLE CreateEventExA (LPSECURITY_ATTRIBUTES lpEventAttributes, LPCSTR lpName, DWORD dwFlags, DWORD dwDesiredAccess)
+{
+    HANDLE handle;
+    ANSI_STRING obj_name;
+    OBJECT_ATTRIBUTES obj_attributes;
+    POBJECT_ATTRIBUTES obj_attributes_ptr;
+
+    if (lpName) {
+        RtlInitAnsiString(&obj_name, lpName);
+        InitializeObjectAttributes(&obj_attributes, &obj_name, OBJ_OPENIF, ObWin32NamedObjectsDirectory(), NULL);
+        obj_attributes_ptr = &obj_attributes;
+    } else {
+        obj_attributes_ptr = NULL;
+    }
+
+    NTSTATUS status = NtCreateEvent(&handle, obj_attributes_ptr, (dwFlags & CREATE_EVENT_MANUAL_RESET ? NotificationEvent : SynchronizationEvent), (dwFlags & CREATE_EVENT_INITIAL_SET ? TRUE : FALSE));
+    if (!NT_SUCCESS(status)) {
+        SetLastError(RtlNtStatusToDosError(status));
+        return NULL;
+    }
+
+    if (status == STATUS_OBJECT_NAME_EXISTS) {
+        SetLastError(ERROR_ALREADY_EXISTS);
+    } else {
+        SetLastError(0);
+    }
+
+    return handle;
+}
+
+HANDLE CreateEventW (LPSECURITY_ATTRIBUTES lpEventAttributes, BOOL bManualReset, BOOL bInitialState, LPCWSTR lpName)
+{
+    HANDLE handle;
+    ANSI_STRING obj_name;
+    OBJECT_ATTRIBUTES obj_attributes;
+    POBJECT_ATTRIBUTES obj_attributes_ptr;
+
+    if (lpName) {
+        UNICODE_STRING obj_name_unicode;
+        RtlInitUnicodeString(&obj_name_unicode, lpName);
+        NTSTATUS status = RtlUnicodeStringToAnsiString(&obj_name, &obj_name_unicode, TRUE);
+        InitializeObjectAttributes(&obj_attributes, &obj_name, OBJ_OPENIF, ObWin32NamedObjectsDirectory(), NULL);
+        obj_attributes_ptr = &obj_attributes;
+    } else {
+        obj_attributes_ptr = NULL;
+    }
+
+    NTSTATUS status = NtCreateEvent(&handle, obj_attributes_ptr, (bManualReset ? NotificationEvent : SynchronizationEvent), bInitialState);
+    if (lpName) {
+        RtlFreeAnsiString(&obj_name);
+    }
+
+    if (!NT_SUCCESS(status)) {
+        SetLastError(RtlNtStatusToDosError(status));
+        return NULL;
+    }
+
+    if (status == STATUS_OBJECT_NAME_EXISTS) {
+        SetLastError(ERROR_ALREADY_EXISTS);
+    } else {
+        SetLastError(0);
+    }
+
+    return handle;
+}
+
+HANDLE CreateEventExW (LPSECURITY_ATTRIBUTES lpEventAttributes, LPCWSTR lpName, DWORD dwFlags, DWORD dwDesiredAccess)
+{
+    HANDLE handle;
+    ANSI_STRING obj_name;
+    OBJECT_ATTRIBUTES obj_attributes;
+    POBJECT_ATTRIBUTES obj_attributes_ptr;
+
+    if (lpName) {
+        UNICODE_STRING obj_name_unicode;
+        RtlInitUnicodeString(&obj_name_unicode, lpName);
+        NTSTATUS status = RtlUnicodeStringToAnsiString(&obj_name, &obj_name_unicode, TRUE);
+        InitializeObjectAttributes(&obj_attributes, &obj_name, OBJ_OPENIF, ObWin32NamedObjectsDirectory(), NULL);
+        obj_attributes_ptr = &obj_attributes;
+    } else {
+        obj_attributes_ptr = NULL;
+    }
+
+    NTSTATUS status = NtCreateEvent(&handle, obj_attributes_ptr, (dwFlags & CREATE_EVENT_MANUAL_RESET ? NotificationEvent : SynchronizationEvent), (dwFlags & CREATE_EVENT_INITIAL_SET ? TRUE : FALSE));
+    if (lpName) {
+        RtlFreeAnsiString(&obj_name);
+    }
+
+    if (!NT_SUCCESS(status)) {
+        SetLastError(RtlNtStatusToDosError(status));
+        return NULL;
+    }
+
+    if (status == STATUS_OBJECT_NAME_EXISTS) {
+        SetLastError(ERROR_ALREADY_EXISTS);
+    } else {
+        SetLastError(0);
+    }
+
+    return handle;
+}
+
+BOOL PulseEvent (HANDLE hEvent)
+{
+    assert(hEvent);
+
+    NTSTATUS status = NtPulseEvent(hEvent, NULL);
+    if (!NT_SUCCESS(status)) {
+        SetLastError(RtlNtStatusToDosError(status));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+BOOL SetEvent (HANDLE hEvent)
+{
+    assert(hEvent);
+
+    NTSTATUS status = NtSetEvent(hEvent, NULL);
+    if (!NT_SUCCESS(status)) {
+        SetLastError(RtlNtStatusToDosError(status));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+BOOL ResetEvent (HANDLE hEvent)
+{
+    assert(hEvent);
+
+    NTSTATUS status = NtClearEvent(hEvent);
+    if (!NT_SUCCESS(status)) {
+        SetLastError(RtlNtStatusToDosError(status));
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 DWORD WaitForSingleObjectEx (HANDLE hHandle, DWORD dwMilliseconds, BOOL bAlertable)
 {
     LARGE_INTEGER duration;

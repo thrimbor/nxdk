@@ -50,6 +50,18 @@ BOOL InitOnceComplete (LPINIT_ONCE lpInitOnce, DWORD dwFlags, LPVOID lpContext);
 VOID Sleep (DWORD dwMilliseconds);
 DWORD SleepEx (DWORD dwMilliseconds, BOOL bAlertable);
 
+#define CREATE_EVENT_INITIAL_SET ((DWORD)0x00000002L)
+#define CREATE_EVENT_MANUAL_RESET ((DWORD)0x00000001L)
+
+HANDLE CreateEventA (LPSECURITY_ATTRIBUTES lpEventAttributes, BOOL bManualReset, BOOL bInitialState, LPCSTR lpName);
+HANDLE CreateEventExA (LPSECURITY_ATTRIBUTES lpEventAttributes, LPCSTR lpName, DWORD dwFlags, DWORD dwDesiredAccess);
+HANDLE CreateEventW (LPSECURITY_ATTRIBUTES lpEventAttributes, BOOL bManualReset, BOOL bInitialState, LPCWSTR lpName);
+HANDLE CreateEventExW (LPSECURITY_ATTRIBUTES lpEventAttributes, LPCWSTR lpName, DWORD dwFlags, DWORD dwDesiredAccess);
+BOOL PulseEvent (HANDLE hEvent);
+BOOL SetEvent (HANDLE hEvent);
+BOOL ResetEvent (HANDLE hEvent);
+
+
 DWORD WaitForSingleObjectEx (HANDLE hHandle, DWORD dwMilliseconds, BOOL bAlertable);
 DWORD WaitForSingleObject (HANDLE hHandle, DWORD dwMilliseconds);
 DWORD WaitForMultipleObjectsEx (DWORD nCount, const HANDLE *lpHandles, BOOL bWaitAll, DWORD dwMilliseconds, BOOL bAlertable);
@@ -57,6 +69,14 @@ DWORD WaitForMultipleObjects (DWORD nCount, const HANDLE *lpHandles, BOOL bWaitA
 
 HANDLE CreateSemaphore (LPSECURITY_ATTRIBUTES lpSemaphoreAttributes, LONG lInitialCount, LONG lMaximumCount, LPCSTR lpName);
 BOOL ReleaseSemaphore (HANDLE hSemaphore, LONG lReleaseCount, LPLONG lpPreviousCount);
+
+#ifndef UNICODE
+#define CreateEvent CreateEventA
+#define CreateEventEx CreateEventExA
+#else
+#define CreateEvent CreateEventW
+#define CreateEventEx CreateEventExW
+#endif
 
 #ifdef __cplusplus
 }
