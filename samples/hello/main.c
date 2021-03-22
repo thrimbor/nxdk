@@ -13,6 +13,7 @@ typedef struct {
     uint32_t zero;
 } cache_sector;
 
+// These entries are in MRU order - the first one is the most recent one
 typedef struct {
     uint32_t titleId;
     uint32_t cachePartitionIndex;
