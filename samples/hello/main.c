@@ -15,7 +15,7 @@ typedef struct {
 
 typedef struct {
     uint32_t titleId;
-    uint32_t unknown1;
+    uint32_t cachePartitionIndex;
     uint32_t unknown2;
 } cache_entry;
 
@@ -58,7 +58,7 @@ int main(void)
 
     cache_entry *entries = sector.data;
     for (int i=0; i < HalDiskCachePartitionCount; i++) {
-        debugPrint("ID: 0x%08x u1: 0x%08x u2: 0x%08x\n", entries[i].titleId, entries[i].unknown1, entries[i].unknown2);
+        debugPrint("ID: 0x%08x pi: 0x%08x u2: 0x%08x\n", entries[i].titleId, entries[i].cachePartitionIndex, entries[i].unknown2);
     }
 
 close_end:
