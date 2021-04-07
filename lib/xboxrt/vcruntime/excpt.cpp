@@ -2,6 +2,8 @@
 #include <excpt_cxx.hpp>
 #include <eh.h>
 #include <xboxkrnl/xboxkrnl.h>
+#include <hal/debug.h>
+#include <string.h>
 
 struct ScopeTableEntry
 {
@@ -198,9 +200,168 @@ __declspec(noreturn) extern "C" void __stdcall _CxxThrowException (void *pExcept
     RtlRaiseException(&exceptionRecord);
 }
 
-extern "C" void CxxFrameHandlerVC8 (PEXCEPTION_RECORD *pExcept, EXCEPTION_REGISTRATION *pRN, CONTEXT *pContext, void *pDC, FuncInfo *functionInfo)
+struct EXCEPTION_REGISTRATION_CXX : EXCEPTION_REGISTRATION
 {
-    DbgPrint("frame handler reached!\n");
-    asm cli;
-    asm hlt;
+    DWORD id;
+    DWORD _ebp;
+};
+
+/*
+struct HandlerMapEntry
+{
+    DWORD Adjectives;
+    TypeDescriptor *Type; //(0=any?)
+    DWORD CatchObjOffset;
+    void *Handler;
+};
+
+struct TryBlockMapEntry
+{
+    DWORD TryLow;
+    DWORD TryHigh;
+    DWORD CatchHigh;
+    DWORD NumCatches;
+    HandlerMapEntry *HandlerArray;
+};
+*/
+static HandlerType *getCatchBlock (TryBlockMapEntry *tryBlock, _ThrowInfo *throwInfo)
+{
+    for (DWORD i = 0; i < tryBlock->nCatches; i++) {
+        // catch all block
+        // FIXME: test this!
+        if (!tryBlock->pHandlerArray[i].pType) {
+            return &tryBlock->pHandlerArray[i];
+        }
+
+        for (int j = 0; j < throwInfo->pCatchableTypeArray->nCatchableTypes; j++) {
+            CatchableType *catchableType = throwInfo->pCatchableTypeArray->arrayOfCatchableTypes[j];
+            if (catchableType->pType == 0 || tryBlock->pHandlerArray[i].pType == 0) { // FIXME: last cond already handled above?
+                if (catchableType->pType == tryBlock->pHandlerArray[i].pType) {
+                    // FIXME: What does this mean? Same RTTI addr?
+                    return &tryBlock->pHandlerArray[i];
+                }
+            }
+
+            //if (*catchableType->pType == *tryBlock->pHandlerArray[i].Type) {
+            // TODO: verify that this works
+            // FIXME: Use proper comparison operator
+            DbgPrint("catchableType: %s\n", catchableType->pType->name);
+            DbgPrint("tryBlockType: %s\n", tryBlock->pHandlerArray[i].pType->name);
+            if (strcmp(catchableType->pType->name, tryBlock->pHandlerArray[i].pType->name) == 0) {
+                DbgPrint("kablamm\n");
+                return &tryBlock->pHandlerArray[i];
+            }
+
+            // FIXME: This doesn't look like it's enough - proper type comparison needed!
+        }
+    }
+
+    return nullptr;
+}
+
+/**
+ * Retrieves the try block and catch block, if any, responsible for the exception
+ */
+static void getTryCatchBlocks (TryBlockMapEntry **tryBlock, HandlerType **catchBlock, EXCEPTION_REGISTRATION_CXX *exceptionRegistration, FuncInfo *functionInfo, _ThrowInfo *throwInfo)
+{
+    // FIXME: I think this is incorrect, we need to start at EXCEPTION_REGISTRATION_CXX->id
+    for (DWORD i = 0; i < functionInfo->nTryBlocks; i++) {
+        const DWORD tryLow = functionInfo->pTryBlockMap[i].tryLow;
+        const DWORD tryHigh = functionInfo->pTryBlockMap[i].tryHigh;
+
+        if ((tryLow <= exceptionRegistration->id) && (exceptionRegistration->id <= tryHigh)) {
+            TryBlockMapEntry *currentTryBlock = &functionInfo->pTryBlockMap[i];
+            HandlerType *currentCatchBlock = getCatchBlock(currentTryBlock, throwInfo);
+            if (currentCatchBlock) {
+                *tryBlock = currentTryBlock;
+                *catchBlock = currentCatchBlock;
+                return;
+            }
+        }
+    }
+
+    *tryBlock = nullptr;
+    *catchBlock = nullptr;
+}
+
+extern "C" int CxxFrameHandlerVC8 (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRATION_CXX *pRN, CONTEXT *pContext, void *pDC, FuncInfo *functionInfo)
+{
+    // - Step through the try blocks inside out
+        // - For each try block, step through the catch blocks
+            // - For each catch block, compare the catch type to the exception object
+            // - if the type is equal, execute catch block
+            // - if the type doesn't match, continue searching
+    // - nothing found? continue searching
+
+    //DbgPrint("frame handler reached!\n");
+
+    // FIXME: What will functionInfo be in C?
+    if (functionInfo->magicNumber != MAGIC_VC8) {
+        DbgPrint("Not a C++ frame, skipping\n");
+        return DISPOSITION_CONTINUE_SEARCH;
+    }
+
+    // FUNC_DESCR_SYNCHRONOUS = 1
+    if ((functionInfo->EHFlags & 1) && (pExcept->ExceptionCode != CXX_EXCEPTION)) {
+        DbgPrint("Not a C++ exception, skipping\n");
+        return DISPOSITION_CONTINUE_SEARCH;
+    }
+
+    TryBlockMapEntry *tryBlock;
+    HandlerType *catchBlock;
+    getTryCatchBlocks(&tryBlock, &catchBlock, pRN, functionInfo, (_ThrowInfo*)pExcept->ExceptionInformation[2]);
+
+    DbgPrint("try block: %x\n", tryBlock);
+    DbgPrint("catch block: %x\n", catchBlock);
+
+    if (!tryBlock || !catchBlock) {
+        DbgPrint("No handler, found, skipping\n");
+        return DISPOSITION_CONTINUE_SEARCH;
+    }
+
+    DbgPrint("dispCatchObj: %x %d\n", catchBlock->dispCatchObj, catchBlock->dispCatchObj);
+    // FIXME: Copy properly
+    DWORD excp_obj_pointer = ((DWORD)&pRN->_ebp) + catchBlock->dispCatchObj;
+
+    *(DWORD *)excp_obj_pointer = *(DWORD *)pExcept->ExceptionInformation[1];
+
+    // FIXME: global unwind
+    // FIXME: local unwind
+    // FIXME: call handler
+
+    // FIXME: Handle exception here
+
+    const DWORD scopeEbp = (DWORD)&pRN->_ebp;
+    const DWORD currentTrylevel = 0;
+    const DWORD handlerFunclet = (DWORD)catchBlock->addressOfHandler;
+    const DWORD newTrylevel = 0;
+    asm volatile (
+        "movl %0, %%ebp;"
+
+        "pushl %%ecx;"
+        "pushl %%ebx;"
+
+        // Unwind all scopes up to the one handling the exception
+        "pushl %%eax;"
+        "pushl %%edx;"
+        //"call __local_unwind2;" // _local_unwind2(pRegistrationFrame, currentTrylevel);
+        "popl %%edx;"
+        "addl $4, %%esp;"
+
+        "popl %%ebx;"
+        "popl %%ecx;"
+
+        // Set the new trylevel in EXCEPTION_REGISTRATION_SEH3
+        //"movl %%ecx, 12(%%edx);"
+        // Call the handler
+        "call *%%ebx;"
+
+        // FIXME: Do we need to do something before jumping? Any housekeeping? Exception object destruction, maybe?
+        // Jump to after the catch block, address returned by handler
+        "jmp *%%eax;"
+        : : "r"(scopeEbp), "a"(currentTrylevel), "b"(handlerFunclet), "c"(newTrylevel), "d"(pRN) : "memory");
+
+    DbgPrint("Returned from handler\n");
+
+    return DISPOSITION_CONTINUE_SEARCH;
 }
