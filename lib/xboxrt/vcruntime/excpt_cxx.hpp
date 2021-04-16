@@ -20,7 +20,7 @@ struct HandlerType
 {
     DWORD adjectives;
     TypeDescriptor *pType;
-    int dispCatchObj;
+    int dispCatchObj; // ebp-relative offset to the memory reserved for the exception object
     void *addressOfHandler;
 };
 
@@ -65,7 +65,7 @@ struct CatchableType
     TypeDescriptor *pType;
     PMD thisDisplacement;
     int sizeOrOffset;
-    void (*copyFunction)(); // copy constructor address
+    void (*copyFunction)(); // copy constructor address (0 = trivially copyable)
 };
 
 struct CatchableTypeArray
