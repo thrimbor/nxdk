@@ -3,6 +3,7 @@
 #include <eh.h>
 #include <xboxkrnl/xboxkrnl.h>
 #include <hal/debug.h>
+#include <assert.h>
 #include <string.h>
 
 struct ScopeTableEntry
@@ -206,53 +207,34 @@ struct EXCEPTION_REGISTRATION_CXX : EXCEPTION_REGISTRATION
     DWORD _ebp;
 };
 
-/*
-struct HandlerMapEntry
-{
-    DWORD Adjectives;
-    TypeDescriptor *Type; //(0=any?)
-    DWORD CatchObjOffset;
-    void *Handler;
-};
-
-struct TryBlockMapEntry
-{
-    DWORD TryLow;
-    DWORD TryHigh;
-    DWORD CatchHigh;
-    DWORD NumCatches;
-    HandlerMapEntry *HandlerArray;
-};
-*/
-static HandlerType *getCatchBlock (TryBlockMapEntry *tryBlock, _ThrowInfo *throwInfo)
+// FIXME: Could use some refactoring
+static HandlerType *getCatchBlock (CatchableType **catchableType, TryBlockMapEntry *tryBlock, _ThrowInfo *throwInfo)
 {
     for (DWORD i = 0; i < tryBlock->nCatches; i++) {
         // catch all block
         // FIXME: test this!
         if (!tryBlock->pHandlerArray[i].pType) {
+            *catchableType = nullptr;
             return &tryBlock->pHandlerArray[i];
         }
 
         for (int j = 0; j < throwInfo->pCatchableTypeArray->nCatchableTypes; j++) {
-            CatchableType *catchableType = throwInfo->pCatchableTypeArray->arrayOfCatchableTypes[j];
-            if (catchableType->pType == 0 || tryBlock->pHandlerArray[i].pType == 0) { // FIXME: last cond already handled above?
-                if (catchableType->pType == tryBlock->pHandlerArray[i].pType) {
-                    // FIXME: What does this mean? Same RTTI addr?
+            CatchableType *type = throwInfo->pCatchableTypeArray->arrayOfCatchableTypes[j];
+            if (type->pType == 0 || tryBlock->pHandlerArray[i].pType == 0) { // FIXME: last cond already handled above?
+                if (type->pType == tryBlock->pHandlerArray[i].pType) {
+                    *catchableType = type;
                     return &tryBlock->pHandlerArray[i];
                 }
             }
 
-            //if (*catchableType->pType == *tryBlock->pHandlerArray[i].Type) {
-            // TODO: verify that this works
-            // FIXME: Use proper comparison operator
-            DbgPrint("catchableType: %s\n", catchableType->pType->name);
+            DbgPrint("type: %s\n", type->pType->name);
             DbgPrint("tryBlockType: %s\n", tryBlock->pHandlerArray[i].pType->name);
-            if (strcmp(catchableType->pType->name, tryBlock->pHandlerArray[i].pType->name) == 0) {
-                DbgPrint("kablamm\n");
+            if (strcmp(type->pType->name, tryBlock->pHandlerArray[i].pType->name) == 0) {
+                *catchableType = type;
                 return &tryBlock->pHandlerArray[i];
             }
 
-            // FIXME: This doesn't look like it's enough - proper type comparison needed!
+            // FIXME: Check type flags! Might be volatile or const!
         }
     }
 
@@ -262,19 +244,20 @@ static HandlerType *getCatchBlock (TryBlockMapEntry *tryBlock, _ThrowInfo *throw
 /**
  * Retrieves the try block and catch block, if any, responsible for the exception
  */
-static void getTryCatchBlocks (TryBlockMapEntry **tryBlock, HandlerType **catchBlock, EXCEPTION_REGISTRATION_CXX *exceptionRegistration, FuncInfo *functionInfo, _ThrowInfo *throwInfo)
+static void getTryCatchBlocks (TryBlockMapEntry **tryBlock, HandlerType **catchBlock, CatchableType **catchableType, EXCEPTION_REGISTRATION_CXX *exceptionRegistration, FuncInfo *functionInfo, _ThrowInfo *throwInfo)
 {
-    // FIXME: I think this is incorrect, we need to start at EXCEPTION_REGISTRATION_CXX->id
     for (DWORD i = 0; i < functionInfo->nTryBlocks; i++) {
         const DWORD tryLow = functionInfo->pTryBlockMap[i].tryLow;
         const DWORD tryHigh = functionInfo->pTryBlockMap[i].tryHigh;
 
         if ((tryLow <= exceptionRegistration->id) && (exceptionRegistration->id <= tryHigh)) {
             TryBlockMapEntry *currentTryBlock = &functionInfo->pTryBlockMap[i];
-            HandlerType *currentCatchBlock = getCatchBlock(currentTryBlock, throwInfo);
+            CatchableType *type;
+            HandlerType *currentCatchBlock = getCatchBlock(&type, currentTryBlock, throwInfo);
             if (currentCatchBlock) {
                 *tryBlock = currentTryBlock;
                 *catchBlock = currentCatchBlock;
+                *catchableType = type;
                 return;
             }
         }
@@ -282,86 +265,147 @@ static void getTryCatchBlocks (TryBlockMapEntry **tryBlock, HandlerType **catchB
 
     *tryBlock = nullptr;
     *catchBlock = nullptr;
+    *catchableType = nullptr;
+}
+
+static inline void *call_ebp_func(void *func, void *_ebp)
+{
+    void *result;
+
+    asm volatile (
+        "pushl %%ebp;"
+        "movl %%ebx, %%ebp;"
+        "call *%%eax;"
+        "popl %%ebp;"
+        : "=a"(result)
+        : "a"(func), "b"(_ebp)
+        : "ecx", "edx", "memory"
+    );
+
+    return result;
+}
+
+static inline void continue_after_catch (EXCEPTION_REGISTRATION_CXX *frame, void *addr)
+{
+    asm volatile (
+        "movl -4(%0), %%esp;"
+        "leal 12(%0), %%ebp;"
+        "jmp *%1;"
+        : : "r"(frame), "a"(addr)
+    );
+}
+
+static inline void call_copy_function (void *func, void *thisptr, void *exceptionObject)
+{
+    // Call copy constructor with thiscall calling convention
+    asm volatile (
+        "pushl %1;"
+        "call *%0;"
+        : : "r"(func), "r"(exceptionObject), "c"(thisptr)
+        : "eax", "edx", "memory"
+    );
+}
+
+static inline void call_destructor (void *func, void *thisptr)
+{
+    // Call destructor with thiscall calling convention
+    asm volatile (
+        "call *%0;"
+        : : "r"(func), "c"(thisptr)
+        : "eax", "edx", "memory"
+    );
+}
+
+static void copy_exception_object (EXCEPTION_REGISTRATION_CXX *frame, HandlerType *catchBlock, CatchableType *catchType, void *exceptionObject)
+{
+    // FIXME: What about virtual stuff?
+    if (!catchType) return;
+
+    // The destination is an ebp-relative address, and may be different for each catch block
+    void *destination = (void *)(((DWORD)&frame->_ebp) + catchBlock->dispCatchObj);
+
+    if (catchType->copyFunction) {
+        call_copy_function((void *)catchType->copyFunction, destination, exceptionObject);
+    } else {
+        // Simple type, can be memmove()d
+        memmove(destination, exceptionObject, catchType->sizeOrOffset);
+        return;
+    }
+}
+
+static void local_unwind_cxx (EXCEPTION_REGISTRATION_CXX *frame, FuncInfo *functionInfo, DWORD trylevelEnd)
+{
+    while (true)
+    {
+        DWORD currentTrylevel = frame->id;
+
+        if (currentTrylevel == trylevelEnd) {
+            break;
+        }
+
+        if (functionInfo->pUnwindMap[currentTrylevel].action) {
+            call_ebp_func((void *)functionInfo->pUnwindMap[currentTrylevel].action, &frame->_ebp);
+        }
+
+        frame->id = functionInfo->pUnwindMap[currentTrylevel].toState;
+        DbgPrint("state transition: %d->%d\n", currentTrylevel, frame->id);
+    }
 }
 
 extern "C" int CxxFrameHandlerVC8 (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRATION_CXX *pRN, CONTEXT *pContext, void *pDC, FuncInfo *functionInfo)
 {
-    // - Step through the try blocks inside out
-        // - For each try block, step through the catch blocks
-            // - For each catch block, compare the catch type to the exception object
-            // - if the type is equal, execute catch block
-            // - if the type doesn't match, continue searching
-    // - nothing found? continue searching
+    // Catch block funclet might clobber esp, so save and restore it before continuing execution
+    DWORD save_esp = ((DWORD*)pRN)[-1];
 
-    //DbgPrint("frame handler reached!\n");
-
-    // FIXME: What will functionInfo be in C?
-    if (functionInfo->magicNumber != MAGIC_VC8) {
-        DbgPrint("Not a C++ frame, skipping\n");
-        return DISPOSITION_CONTINUE_SEARCH;
-    }
+    assert(functionInfo->magicNumber == MAGIC_VC8);
 
     // FUNC_DESCR_SYNCHRONOUS = 1
-    if ((functionInfo->EHFlags & 1) && (pExcept->ExceptionCode != CXX_EXCEPTION)) {
+    if (!(functionInfo->EHFlags & 1) || (pExcept->ExceptionCode != CXX_EXCEPTION)) {
         DbgPrint("Not a C++ exception, skipping\n");
         return DISPOSITION_CONTINUE_SEARCH;
     }
 
-    TryBlockMapEntry *tryBlock;
-    HandlerType *catchBlock;
-    getTryCatchBlocks(&tryBlock, &catchBlock, pRN, functionInfo, (_ThrowInfo*)pExcept->ExceptionInformation[2]);
-
-    DbgPrint("try block: %x\n", tryBlock);
-    DbgPrint("catch block: %x\n", catchBlock);
-
-    if (!tryBlock || !catchBlock) {
-        DbgPrint("No handler, found, skipping\n");
+    if (pExcept->ExceptionFlags & (EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND)) {
+        DbgPrint("maxState: %d\n", functionInfo->maxState);
+        if (functionInfo->maxState != 0) {
+            local_unwind_cxx(pRN, functionInfo, -1);
+        }
         return DISPOSITION_CONTINUE_SEARCH;
     }
 
-    DbgPrint("dispCatchObj: %x %d\n", catchBlock->dispCatchObj, catchBlock->dispCatchObj);
-    // FIXME: Copy properly
-    DWORD excp_obj_pointer = ((DWORD)&pRN->_ebp) + catchBlock->dispCatchObj;
+    _ThrowInfo *throwInfo = (_ThrowInfo*)pExcept->ExceptionInformation[2];
+    assert(throwInfo);
 
-    *(DWORD *)excp_obj_pointer = *(DWORD *)pExcept->ExceptionInformation[1];
+    TryBlockMapEntry *tryBlock;
+    HandlerType *catchBlock;
+    CatchableType *catchType;
+    getTryCatchBlocks(&tryBlock, &catchBlock, &catchType, pRN, functionInfo, throwInfo);
 
-    // FIXME: global unwind
-    // FIXME: local unwind
-    // FIXME: call handler
+    if (!tryBlock || !catchBlock) {
+        return DISPOSITION_CONTINUE_SEARCH;
+    }
 
-    // FIXME: Handle exception here
+    // Copy the exception object to the memory reserved by the catch block, needs to happen before unwinding
+    copy_exception_object(pRN, catchBlock, catchType, (void *)pExcept->ExceptionInformation[1]);
 
-    const DWORD scopeEbp = (DWORD)&pRN->_ebp;
-    const DWORD currentTrylevel = 0;
-    const DWORD handlerFunclet = (DWORD)catchBlock->addressOfHandler;
-    const DWORD newTrylevel = 0;
-    asm volatile (
-        "movl %0, %%ebp;"
+    // First global unwinding, then local unwinding
+    RtlUnwind(pRN, 0, pExcept, 0);
+    local_unwind_cxx(pRN, functionInfo, tryBlock->tryLow);
+    pRN->id = tryBlock->tryHigh + 1;
 
-        "pushl %%ecx;"
-        "pushl %%ebx;"
+    void *continue_addr = call_ebp_func(catchBlock->addressOfHandler, &pRN->_ebp);
 
-        // Unwind all scopes up to the one handling the exception
-        "pushl %%eax;"
-        "pushl %%edx;"
-        //"call __local_unwind2;" // _local_unwind2(pRegistrationFrame, currentTrylevel);
-        "popl %%edx;"
-        "addl $4, %%esp;"
+    // Restore potentially clobbered saved esp before continuing execution
+    ((DWORD*)pRN)[-1] = save_esp;
 
-        "popl %%ebx;"
-        "popl %%ecx;"
+    // Destroy exception object, if necessary
+    if (throwInfo->pmfnUnwind) {
+        void *objaddr = (void *)(((DWORD)&pRN->_ebp) + catchBlock->dispCatchObj);
+        call_destructor((void *)throwInfo->pmfnUnwind, objaddr);
+    }
 
-        // Set the new trylevel in EXCEPTION_REGISTRATION_SEH3
-        //"movl %%ecx, 12(%%edx);"
-        // Call the handler
-        "call *%%ebx;"
-
-        // FIXME: Do we need to do something before jumping? Any housekeeping? Exception object destruction, maybe?
-        // Jump to after the catch block, address returned by handler
-        "jmp *%%eax;"
-        : : "r"(scopeEbp), "a"(currentTrylevel), "b"(handlerFunclet), "c"(newTrylevel), "d"(pRN) : "memory");
-
-    DbgPrint("Returned from handler\n");
+    // Resume normal execution after the catch block
+    continue_after_catch(pRN, continue_addr);
 
     return DISPOSITION_CONTINUE_SEARCH;
 }
