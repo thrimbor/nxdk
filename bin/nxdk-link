@@ -5,5 +5,5 @@ lld -flavor link \
     -fixed \
     -base:0x00010000 \
     -stack:65536 \
-    -merge:.edata=.edataxb \
+    -merge:.edata=.edata \
     "$@"
