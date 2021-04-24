@@ -104,6 +104,19 @@ class Xbe : public Error
             uint32 dwXAPILibraryVersionAddr;        // 0x016C - xapi library version address
             uint32 dwLogoBitmapAddr;                // 0x0170 - logo bitmap address
             uint32 dwSizeofLogoBitmap;              // 0x0174 - logo bitmap size
+            uint32 dwUnknown1;                      // 0x0178
+            uint32 dwUnknown2;                      // 0x017C
+            uint32 dwUnknown3;                      // 0x0180
+
+            struct ExtendedHeader
+            {
+                uint32 dwMagic;
+                uint32 dwVersion;
+                uint32 dwExportDirectoryAddr;
+                uint32 dwImportDirectoryAddr;
+                uint32 dwLoadConfigAddr;
+            }
+            extendedHeader;
         }
         __attribute((packed))
         m_Header;

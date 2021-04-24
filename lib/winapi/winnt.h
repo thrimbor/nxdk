@@ -314,6 +314,9 @@ typedef struct _XBE_FILE_HEADER
     PXBE_LIBRARY_HEADER PointerToXapiLibrary;
     DWORD PointerToLogoBitmap;
     DWORD SizeOfLogoBitmap;
+    DWORD Unknown1;
+    DWORD Unknown2;
+    DWORD Unknown3;
 } XBE_FILE_HEADER, *PXBE_FILE_HEADER;
 
 #define XBE_DEFAULT_BASE (0x10000)

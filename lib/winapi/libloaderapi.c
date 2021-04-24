@@ -31,18 +31,23 @@ BOOL FreeLibrary (HMODULE hLibModule)
     return TRUE;
 }
 
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t exportDir;
+    uint32_t importDir;
+    uint32_t loadConfig;
+} extended_header;
+
 static PIMAGE_EXPORT_DIRECTORY find_edata (void)
 {
-    DWORD num_sections = CURRENT_XBE_HEADER->NumberOfSections;
-    PXBE_SECTION_HEADER section_header_addr = CURRENT_XBE_HEADER->PointerToSectionTable;
-
-    for (DWORD i = 0; i < num_sections; i++) {
-        if (strcmp(section_header_addr[i].SectionName, ".edata") == 0) {
-            return (PIMAGE_EXPORT_DIRECTORY)section_header_addr[i].VirtualAddress;
-        }
+    if (CURRENT_XBE_HEADER->SizeOfImageHeader > sizeof(XBE_FILE_HEADER)) {
+        extended_header *xh = CURRENT_XBE_HEADER + 1;
+        if (xh->magic == 0x6b64786e && xh->version >= 1)
+            return xh->exportDir;
+        else
+            return NULL;
     }
-
-    return NULL;
 }
 
 FARPROC GetProcAddress (HMODULE hModule, LPCSTR lpProcName)
