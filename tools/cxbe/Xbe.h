@@ -1,10 +1,10 @@
 // ******************************************************************
 // *
 // *    .,-:::::    .,::      .::::::::.    .,::      .:
-// *  ,;;;'````'    `;;;,  .,;;  ;;;'';;'   `;;;,  .,;; 
-// *  [[[             '[[,,[['   [[[__[[\.    '[[,,[['  
-// *  $$$              Y$$$P     $$""""Y$$     Y$$$P    
-// *  `88bo,__,o,    oP"``"Yo,  _88o,,od8P   oP"``"Yo,  
+// *  ,;;;'````'    `;;;,  .,;;  ;;;'';;'   `;;;,  .,;;
+// *  [[[             '[[,,[['   [[[__[[\.    '[[,,[['
+// *  $$$              Y$$$P     $$""""Y$$     Y$$$P
+// *  `88bo,__,o,    oP"``"Yo,  _88o,,od8P   oP"``"Yo,
 // *    "YUMMMMMP",m"       "Mm,""YUMMMP" ,m"       "Mm,
 // *
 // *   Cxbx->Core->Xbe.h
@@ -111,6 +111,16 @@ class Xbe : public Error
             uint32 dwXAPILibraryVersionAddr;        // 0x016C - xapi library version address
             uint32 dwLogoBitmapAddr;                // 0x0170 - logo bitmap address
             uint32 dwSizeofLogoBitmap;              // 0x0174 - logo bitmap size
+            uint32 dwUnknown1;                      // 0x0178
+            uint32 dwUnknown2;                      // 0x017C
+            uint32 dwUnknown3;                      // 0x0180
+
+            struct ExtendedHeader
+            {
+                uint32 dwMagic;
+                uint32 dwExportDirectoryAddr;
+            }
+            extendedHeader;
         }
         #include "AlignPosfix1.h"
         m_Header;
@@ -264,7 +274,7 @@ const uint32 XBEIMAGE_GAME_REGION_NA                 = 0x00000001;
 const uint32 XBEIMAGE_GAME_REGION_JAPAN              = 0x00000002;
 const uint32 XBEIMAGE_GAME_REGION_RESTOFWORLD        = 0x00000004;
 const uint32 XBEIMAGE_GAME_REGION_MANUFACTURING      = 0x80000000;
- 
+
 // media type flags for Xbe certificate
 const uint32 XBEIMAGE_MEDIA_TYPE_HARD_DISK           = 0x00000001;
 const uint32 XBEIMAGE_MEDIA_TYPE_DVD_X2              = 0x00000002;

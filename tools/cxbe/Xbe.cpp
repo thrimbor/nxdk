@@ -337,6 +337,9 @@ Xbe::Xbe(class Exe *x_Exe, const char *x_szTitle, bool x_bRetail)
         // standard Xbe magic number
         m_Header.dwMagic = *(uint32*)"XBEH";
 
+        // extended Xbe magic number
+        m_Header.extendedHeader.dwMagic = 0xDEADBEEF;
+
         // nobody has the private key yet, so zero this out
         memset(m_Header.pbDigitalSignature, 0, 256);
 
@@ -381,6 +384,10 @@ Xbe::Xbe(class Exe *x_Exe, const char *x_szTitle, bool x_bRetail)
         // TODO: generate these values
         m_Header.dwKernelLibraryVersionAddr = 0;
         m_Header.dwXAPILibraryVersionAddr = 0;
+
+        m_Header.dwUnknown1 = 0;
+        m_Header.dwUnknown2 = 0;
+        m_Header.dwUnknown3 = 0;
     }
 
     printf("OK\n");
@@ -489,6 +496,22 @@ Xbe::Xbe(class Exe *x_Exe, const char *x_szTitle, bool x_bRetail)
                 m_Header.dwTLSAddr = 0;
             else
                 m_Header.dwTLSAddr = tls_directory + m_Header.dwPeBaseAddr;
+
+            printf("OK (0x%.08X)\n", m_Header.dwTLSAddr);
+        }
+
+        {
+            printf("Xbe::Xbe: Setting export directory address...");
+
+            uint32 export_directory = x_Exe->m_OptionalHeader.m_image_data_directory[IMAGE_DIRECTORY_ENTRY_EXPORT].m_virtual_addr;
+            if (!export_directory)
+            {
+                m_Header.extendedHeader.dwExportDirectoryAddr = 0;
+            }
+            else
+            {
+                m_Header.extendedHeader.dwExportDirectoryAddr = export_directory + m_Header.dwPeBaseAddr;
+            }
 
             printf("OK (0x%.08X)\n", m_Header.dwTLSAddr);
         }
