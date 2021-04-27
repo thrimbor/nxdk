@@ -56,7 +56,7 @@ jobs:
         run: |
           export HOMEBREW_NO_INSTALL_CLEANUP=1
           brew doctor || true
-          brew update-reset && brew install llvm
+          brew update-reset && brew install llvm coreutils
       - name: Build
         run: sh ./.ci_build_samples.sh
   ubuntu:
