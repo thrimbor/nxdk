@@ -18,11 +18,11 @@
 #define DEBUGGING        0
 
 #include "httpserver.h"
+#include "lwip/apps/http_client.h"
 
 struct netif nforce_netif, *g_pnetif;
 
 err_t nforceif_init(struct netif *netif);
-void http_server_netconn_init(void);
 static void packet_timer(void *arg);
 
 static void tcpip_init_done(void *arg)
@@ -36,6 +36,17 @@ static void packet_timer(void *arg)
   LWIP_UNUSED_ARG(arg);
   Pktdrv_ReceivePackets();
   sys_timeout(PKT_TMR_INTERVAL, packet_timer, NULL);
+}
+
+void result_fn (void *arg, httpc_result_t httpc_result, u32_t rx_content_len, u32_t srv_res, err_t err)
+{
+    debugPrint("download done, err = %d, rx_content_len = %d, httpc_result=%d\n", err, rx_content_len, httpc_result);
+}
+
+err_t headers_done_fn (httpc_state_t *connection, void *arg, struct pbuf *hdr, u16_t hdr_len, u32_t content_len)
+{
+    debugPrint("headers received, content length: %d, hdr_len: %d\n", content_len, hdr_len);
+    return ERR_OK;
 }
 
 int main(void)
@@ -98,7 +109,20 @@ int main(void)
 	debugPrint("Gateway..... %s\n", ip4addr_ntoa(netif_ip4_gw(g_pnetif)));
 	debugPrint("\n");
 
-	http_server_netconn_init();
+    nxMountDrive('E', "\\Device\\Harddisk0\\Partition1\\");
+
+	//http_server_netconn_init();
+    httpc_state_t *connection;
+    httpc_connection_t settings;
+    RtlZeroMemory(&settings, sizeof(settings));
+    settings.result_fn = result_fn;
+    settings.headers_done_fn = headers_done_fn;
+    ip_addr_t ip_addr;
+    IP_ADDR4(&ip_addr, 192, 168, 1, 166);
+    err_t err = httpc_get_file_to_disk(&ip_addr, 8000, "/testfile.bin", &settings, NULL, "E:\\testfile", &connection);
+
+    debugPrint("err: %d\n", err);
+
 	while (1) NtYieldExecution();
 	Pktdrv_Quit();
 	return 0;
