@@ -70,6 +70,9 @@ struct CatchableType
     int sizeOrOffset;
     void (*copyFunction)(); // copy constructor address (0 = trivially copyable)
 };
+#define CLASS_IS_SIMPLE_TYPE 1
+#define CLASS_HAS_VIRTUAL_BASE 4
+
 
 struct CatchableTypeArray
 {
