@@ -322,9 +322,11 @@ static void copy_exception_object (EXCEPTION_REGISTRATION_CXX *frame, HandlerTyp
     if (!catchType) return;
 
     // The destination is an ebp-relative address, and may be different for each catch block
-    void *destination = (void *)(((DWORD)&frame->_ebp) + catchBlock->dispCatchObj);
+    void **destination = (void **)(((DWORD)&frame->_ebp) + catchBlock->dispCatchObj);
 
-    if (catchType->copyFunction) {
+    if (catchBlock->adjectives & TYPE_FLAG_REFERENCE) {
+        *destination = exceptionObject;
+    } else if (catchType->copyFunction) {
         call_copy_function((void *)catchType->copyFunction, destination, exceptionObject);
     } else {
         // Simple type, can be memmove()d

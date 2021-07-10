@@ -23,6 +23,9 @@ struct HandlerType
     int dispCatchObj; // ebp-relative offset to the memory reserved for the exception object
     void *addressOfHandler;
 };
+#define TYPE_FLAG_CONST 1
+#define TYPE_FLAG_VOLATILE 2
+#define TYPE_FLAG_REFERENCE 8
 
 struct TryBlockMapEntry
 {
