@@ -326,12 +326,14 @@ static void copy_exception_object (EXCEPTION_REGISTRATION_CXX *frame, HandlerTyp
 
     if (catchBlock->adjectives & TYPE_FLAG_REFERENCE) {
         *destination = exceptionObject;
+    } else if (catchType->properties & CLASS_IS_SIMPLE_TYPE) {
+        // Simple type, can be memmove()d
+        memmove(destination, exceptionObject, catchType->sizeOrOffset);
     } else if (catchType->copyFunction) {
         call_copy_function((void *)catchType->copyFunction, destination, exceptionObject);
     } else {
         // Simple type, can be memmove()d
         memmove(destination, exceptionObject, catchType->sizeOrOffset);
-        return;
     }
 }
 
