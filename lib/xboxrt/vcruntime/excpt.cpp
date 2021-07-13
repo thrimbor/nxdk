@@ -241,33 +241,6 @@ static HandlerType *getCatchBlock (CatchableType **catchableType, TryBlockMapEnt
     return nullptr;
 }
 
-/**
- * Retrieves the try block and catch block, if any, responsible for the exception
- */
-static void getTryCatchBlocks (TryBlockMapEntry **tryBlock, HandlerType **catchBlock, CatchableType **catchableType, EXCEPTION_REGISTRATION_CXX *exceptionRegistration, FuncInfo *functionInfo, _ThrowInfo *throwInfo)
-{
-    for (DWORD i = 0; i < functionInfo->nTryBlocks; i++) {
-        const DWORD tryLow = functionInfo->pTryBlockMap[i].tryLow;
-        const DWORD tryHigh = functionInfo->pTryBlockMap[i].tryHigh;
-
-        if ((tryLow <= exceptionRegistration->id) && (exceptionRegistration->id <= tryHigh)) {
-            TryBlockMapEntry *currentTryBlock = &functionInfo->pTryBlockMap[i];
-            CatchableType *type;
-            HandlerType *currentCatchBlock = getCatchBlock(&type, currentTryBlock, throwInfo);
-            if (currentCatchBlock) {
-                *tryBlock = currentTryBlock;
-                *catchBlock = currentCatchBlock;
-                *catchableType = type;
-                return;
-            }
-        }
-    }
-
-    *tryBlock = nullptr;
-    *catchBlock = nullptr;
-    *catchableType = nullptr;
-}
-
 static inline void *call_ebp_func(void *func, void *_ebp)
 {
     void *result;
@@ -433,36 +406,47 @@ extern "C" int CxxFrameHandlerVC8 (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRA
     _ThrowInfo *throwInfo = (_ThrowInfo*)pExcept->ExceptionInformation[2];
     assert(throwInfo);
 
-    TryBlockMapEntry *tryBlock;
-    HandlerType *catchBlock;
-    CatchableType *catchType;
-    getTryCatchBlocks(&tryBlock, &catchBlock, &catchType, pRN, functionInfo, throwInfo);
+    for (DWORD i = 0; i < functionInfo->nTryBlocks; i++) {
+        const DWORD tryLow = functionInfo->pTryBlockMap[i].tryLow;
+        const DWORD tryHigh = functionInfo->pTryBlockMap[i].tryHigh;
 
-    if (!tryBlock || !catchBlock) {
-        return DISPOSITION_CONTINUE_SEARCH;
+        if (tryLow > pRN->id) continue;
+        if (pRN->id > tryHigh) continue;
+
+        TryBlockMapEntry *tryBlock = &functionInfo->pTryBlockMap[i];
+        CatchableType *catchType;
+        HandlerType *catchBlock = getCatchBlock(&catchType, tryBlock, throwInfo);
+
+        if (!catchBlock) continue;
+
+        // Copy the exception object to the memory reserved by the catch block, needs to happen before unwinding
+        copy_exception_object(pRN, catchBlock, catchType, (void *)pExcept->ExceptionInformation[1]);
+
+        // First global unwinding, then local unwinding
+        RtlUnwind(pRN, 0, pExcept, 0);
+        local_unwind_cxx(pRN, functionInfo, tryBlock->tryLow);
+        pRN->id = tryBlock->tryHigh + 1;
+
+        void *continue_addr = call_catch_block(catchBlock->addressOfHandler, &pRN->_ebp);
+
+        // Restore potentially clobbered saved esp before continuing execution
+        ((DWORD*)pRN)[-1] = save_esp;
+
+        // TODO: Check correctness
+        if (!continue_addr) {
+            continue;
+        }
+
+        // Destroy exception object, if necessary
+        if (throwInfo->pmfnUnwind) {
+            void *objaddr = (void *)(((DWORD)&pRN->_ebp) + catchBlock->dispCatchObj);
+            call_destructor((void *)throwInfo->pmfnUnwind, objaddr);
+        }
+
+        // Resume normal execution after the catch block
+        continue_after_catch(pRN, continue_addr);
     }
 
-    // Copy the exception object to the memory reserved by the catch block, needs to happen before unwinding
-    copy_exception_object(pRN, catchBlock, catchType, (void *)pExcept->ExceptionInformation[1]);
-
-    // First global unwinding, then local unwinding
-    RtlUnwind(pRN, 0, pExcept, 0);
-    local_unwind_cxx(pRN, functionInfo, tryBlock->tryLow);
-    pRN->id = tryBlock->tryHigh + 1;
-
-    void *continue_addr = call_catch_block(catchBlock->addressOfHandler, &pRN->_ebp);
-
-    // Restore potentially clobbered saved esp before continuing execution
-    ((DWORD*)pRN)[-1] = save_esp;
-
-    // Destroy exception object, if necessary
-    if (throwInfo->pmfnUnwind) {
-        void *objaddr = (void *)(((DWORD)&pRN->_ebp) + catchBlock->dispCatchObj);
-        call_destructor((void *)throwInfo->pmfnUnwind, objaddr);
-    }
-
-    // Resume normal execution after the catch block
-    continue_after_catch(pRN, continue_addr);
-
+    // No matching catch block in this frame
     return DISPOSITION_CONTINUE_SEARCH;
 }
