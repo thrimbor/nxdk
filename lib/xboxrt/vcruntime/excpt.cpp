@@ -285,6 +285,17 @@ static inline void *call_ebp_func(void *func, void *_ebp)
     return result;
 }
 
+static void *call_catch_block(void *func, void *_ebp)
+{
+    void *continue_addr = nullptr;
+    __try {
+        continue_addr = call_ebp_func(func, _ebp);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        DbgPrint("RETHROW!\n");
+    }
+    return continue_addr;
+}
+
 static inline void continue_after_catch (EXCEPTION_REGISTRATION_CXX *frame, void *addr)
 {
     asm volatile (
@@ -397,7 +408,7 @@ extern "C" int CxxFrameHandlerVC8 (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRA
     local_unwind_cxx(pRN, functionInfo, tryBlock->tryLow);
     pRN->id = tryBlock->tryHigh + 1;
 
-    void *continue_addr = call_ebp_func(catchBlock->addressOfHandler, &pRN->_ebp);
+    void *continue_addr = call_catch_block(catchBlock->addressOfHandler, &pRN->_ebp);
 
     // Restore potentially clobbered saved esp before continuing execution
     ((DWORD*)pRN)[-1] = save_esp;
