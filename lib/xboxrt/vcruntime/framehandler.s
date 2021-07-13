@@ -1,3 +1,6 @@
+.include "prelude.s.inc"
+safeseh_prelude
+
 // int __cdecl __CxxFrameHandler3 (PEXCEPTION_RECORD, PEXCEPTION_REGISTRATION, _CONTEXT *, void *);
 // Additionally, a function information table is passed in the eax register
 .globl ___CxxFrameHandler3
