@@ -16,6 +16,34 @@ TEST(Exceptions, int_throw_simple)
     ASSERT_EQ(v_result, 1337);
 }
 
+TEST(Exceptions, int_throw_simple2)
+{
+    int v_result = 0;
+    try {
+        throw 1337;
+        ASSERT_NOREACH();
+    } catch (int v) {
+        v_result = v;
+    }
+
+    ASSERT_EQ(v_result, 1337);
+}
+
+TEST(Exceptions, int_throw_simple3)
+{
+    int v_result = 0;
+    try {
+        throw 1337;
+        ASSERT_NOREACH();
+    } catch (void *v) {
+        ASSERT_NOREACH();
+    } catch (int v) {
+        v_result = v;
+    }
+
+    ASSERT_EQ(v_result, 1337);
+}
+
 TEST(Exceptions, int_throw_nested)
 {
     int v_result = 0;
