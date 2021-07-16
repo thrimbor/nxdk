@@ -6,6 +6,9 @@
 #include <assert.h>
 #include <string.h>
 
+//#define DbgPrint(...) DbgPrint(__VA_ARGS__)
+#define DbgPrint(...) ((void)0)
+
 struct ScopeTableEntry
 {
     DWORD EnclosingLevel;
