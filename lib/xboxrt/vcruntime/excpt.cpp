@@ -207,34 +207,49 @@ struct EXCEPTION_REGISTRATION_CXX : EXCEPTION_REGISTRATION
     DWORD _ebp;
 };
 
-// FIXME: Could use some refactoring
+/**
+ * Checks all catch blocks of a given try block to find one that can catch the
+ * exception. If a match is found, a pointer to the catch block is returned,
+ * along with a pointer to the type the exception was caught as.
+ * @param catchableType A pointer to a pointer that will receive the address of the type the exception was caught as. Will be NULL for catch(...) blocks
+ * @param tryBlock The try block map entry that will get checked
+ * @param throwInfo The exception type info
+ * @return A pointer to the catch block that caught the exception, NULL if no block caught it
+ */
 static HandlerType *getCatchBlock (CatchableType **catchableType, TryBlockMapEntry *tryBlock, _ThrowInfo *throwInfo)
 {
-    for (DWORD i = 0; i < tryBlock->nCatches; i++) {
-        // catch all block
-        // FIXME: test this!
-        if (!tryBlock->pHandlerArray[i].pType) {
+    assert(catchableType);
+    assert(tryBlock);
+    assert(throwInfo);
+
+    for (int i = 0; i < tryBlock->nCatches; i++) {
+        HandlerType *const catchBlock = &tryBlock->pHandlerArray[i];
+
+        // catch(...) aka catch-all block, accepts all exception types
+        if (!catchBlock->pType) {
             *catchableType = nullptr;
-            return &tryBlock->pHandlerArray[i];
+            return catchBlock;
         }
 
         for (int j = 0; j < throwInfo->pCatchableTypeArray->nCatchableTypes; j++) {
-            CatchableType *type = throwInfo->pCatchableTypeArray->arrayOfCatchableTypes[j];
-            if (type->pType == 0 || tryBlock->pHandlerArray[i].pType == 0) { // FIXME: last cond already handled above?
-                if (type->pType == tryBlock->pHandlerArray[i].pType) {
-                    *catchableType = type;
-                    return &tryBlock->pHandlerArray[i];
+            CatchableType *const type = throwInfo->pCatchableTypeArray->arrayOfCatchableTypes[j];
+
+            assert(type->pType);
+            assert(catchBlock->pType);
+
+            // Try direct pointer comparison for speed, if it fails, fall back to mangled name string comparison
+            if (type->pType != catchBlock->pType) {
+                if (strcmp(type->pType->name, catchBlock->pType->name) != 0) {
+                    continue;
                 }
             }
 
-            DbgPrint("type: %s\n", type->pType->name);
-            DbgPrint("tryBlockType: %s\n", tryBlock->pHandlerArray[i].pType->name);
-            if (strcmp(type->pType->name, tryBlock->pHandlerArray[i].pType->name) == 0) {
-                *catchableType = type;
-                return &tryBlock->pHandlerArray[i];
-            }
+            // const or volatile exceptions need a catch block with the same property, reverse would be fine
+            if ((throwInfo->attributes & TYPE_FLAG_CONST) && !(catchBlock->adjectives & TYPE_FLAG_CONST)) continue;
+            if ((throwInfo->attributes & TYPE_FLAG_VOLATILE) && !(catchBlock->adjectives & TYPE_FLAG_VOLATILE)) continue;
 
-            // FIXME: Check type flags! Might be volatile or const!
+            *catchableType = type;
+            return catchBlock;
         }
     }
 
