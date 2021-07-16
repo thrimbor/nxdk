@@ -306,12 +306,45 @@ static inline void continue_after_catch (EXCEPTION_REGISTRATION_CXX *frame, void
     );
 }
 
+static inline void *get_this_ptr (void *objptr, CatchableType *type)
+{
+    if (!objptr) return nullptr;
+    assert(type);
+
+    const PMD *pmd = &type->thisDisplacement;
+    char *ptr = (char *)objptr;
+
+    ptr += pmd->mdisp;
+    if (pmd->pdisp != -1) {
+        char *vbtable = ptr + pmd->pdisp;
+        ptr += *(int*)(vbtable + pmd->vdisp);
+    }
+    DbgPrint("ptr1: %x\n", ptr);
+    ptr = (char *)objptr;
+
+    DbgPrint("pmd:\nmdisp: %d\npdisp: %d\nvdisp: %d\n", pmd->mdisp, pmd->pdisp, pmd->vdisp);
+
+    if (pmd->pdisp >= 0) {
+        int *offset_ptr;
+        ptr += pmd->pdisp;
+        offset_ptr = (int *)(*(char **)ptr + pmd->vdisp);
+        ptr += *offset_ptr;
+    }
+    ptr += pmd->mdisp;
+
+    DbgPrint("ptr2: %x\n", ptr);
+
+    return ptr;
+}
+
 static inline void call_copy_function (void *func, void *thisptr, void *exceptionObject)
 {
     // Call copy constructor with thiscall calling convention
     asm volatile (
+        "pushl $1;"
         "pushl %1;"
         "call *%0;"
+        "popl %1;"
         : : "r"(func), "r"(exceptionObject), "c"(thisptr)
         : "eax", "edx", "memory"
     );
@@ -336,15 +369,24 @@ static void copy_exception_object (EXCEPTION_REGISTRATION_CXX *frame, HandlerTyp
     void **destination = (void **)(((DWORD)&frame->_ebp) + catchBlock->dispCatchObj);
 
     if (catchBlock->adjectives & TYPE_FLAG_REFERENCE) {
-        *destination = exceptionObject;
+        DbgPrint("> %d\n", __LINE__);
+        *destination = get_this_ptr(exceptionObject, catchType);
     } else if (catchType->properties & CLASS_IS_SIMPLE_TYPE) {
         // Simple type, can be memmove()d
+        DbgPrint("> %d\n", __LINE__);
         memmove(destination, exceptionObject, catchType->sizeOrOffset);
+        DbgPrint("> %d\n", __LINE__);
+        if (catchType->sizeOrOffset == sizeof(void *)) {
+            DbgPrint("> %d\n", __LINE__);
+            *destination = get_this_ptr(*destination, catchType);
+        }
     } else if (catchType->copyFunction) {
-        call_copy_function((void *)catchType->copyFunction, destination, exceptionObject);
+        DbgPrint("> %d\n", __LINE__);
+        call_copy_function((void *)catchType->copyFunction, destination, get_this_ptr(exceptionObject, catchType));
     } else {
+        DbgPrint("> %d\n", __LINE__);
         // Simple type, can be memmove()d
-        memmove(destination, exceptionObject, catchType->sizeOrOffset);
+        memmove(destination, get_this_ptr(exceptionObject, catchType), catchType->sizeOrOffset);
     }
 }
 
