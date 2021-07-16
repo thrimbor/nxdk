@@ -19,7 +19,9 @@ void nunit_print (const char *str, ...)
 
 NUNIT_DEFINE_GLOBALS
 
-// TODO: No volatile tests yet!
+// TODO: SEH with catch(...) ?
+// TODO: Non-virtual inheritance with different offsets
+// TODO: Catch all tests
 
 int main ()
 {

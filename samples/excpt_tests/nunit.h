@@ -188,12 +188,16 @@ static int nunit_run_tests()
         counter++;
         nunit_print("[TEST] [%zu/%zu] %s\n", counter, tests_total, (*iter)->name);
         nunit_testfail_flag = false;
+        #ifdef _WIN32
         __try {
+        #endif
             (*iter)->testfunction();
+        #ifdef _WIN32
         } __except (1) {
             nunit_print("Unexpected exception: %08x\n", _exception_code());
             nunit_testfail_flag = true;
         }
+        #endif
         nunit_tests_run++;
         if (nunit_testfail_flag) {
             nunit_tests_failed++;

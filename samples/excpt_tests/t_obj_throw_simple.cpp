@@ -204,7 +204,6 @@ TEST(Exceptions, obj_const_throw_valuecatch)
     ASSERT_EQ(t3, 0xdeadbeef);
 }
 
-// TODO: Check if this is correct on Windows
 TEST(Exceptions, obj_const_throw_refcatch)
 {
     const ThrowTestClass t(23, 1337, 0xdeadbeef);
@@ -223,6 +222,56 @@ TEST(Exceptions, obj_const_throw_refcatch)
         t1 = e.v1;
         t2 = e.v2;
         t3 = e.v3;
+    }
+
+    ASSERT_EQ(t1, 23);
+    ASSERT_EQ(t2, 1337);
+    ASSERT_EQ(t3, 0xdeadbeef);
+}
+
+TEST(Exceptions, obj_volatile_ptr_throw_volatile_catch)
+{
+    volatile ThrowTestClass t(23, 1337, 0xdeadbeef);
+    int t1=0, t2=0, t3=0;
+    try {
+        try {
+            throw &t;
+            ASSERT_NOREACH();
+        } catch (int i) {
+            ASSERT_NOREACH();
+        }
+        ASSERT_NOREACH();
+    } catch (ThrowTestClass *e) {
+        ASSERT_NOREACH();
+    } catch (volatile ThrowTestClass *e) {
+        t1 = e->v1;
+        t2 = e->v2;
+        t3 = e->v3;
+    }
+
+    ASSERT_EQ(t1, 23);
+    ASSERT_EQ(t2, 1337);
+    ASSERT_EQ(t3, 0xdeadbeef);
+}
+
+TEST(Exceptions, obj_simple_ptr_throw_volatile_catch)
+{
+    ThrowTestClass t(23, 1337, 0xdeadbeef);
+    int t1=0, t2=0, t3=0;
+    try {
+        try {
+            throw &t;
+            ASSERT_NOREACH();
+        } catch (int i) {
+            ASSERT_NOREACH();
+        }
+        ASSERT_NOREACH();
+    } catch (int i) {
+        ASSERT_NOREACH();
+    } catch (volatile ThrowTestClass *e) {
+        t1 = e->v1;
+        t2 = e->v2;
+        t3 = e->v3;
     }
 
     ASSERT_EQ(t1, 23);

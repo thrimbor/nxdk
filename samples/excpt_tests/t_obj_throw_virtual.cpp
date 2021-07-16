@@ -128,6 +128,8 @@ TEST(Exceptions, obj_virt_throw_refcatch_const)
     ASSERT_EQ(t3, 0xdeadbeef);
 }
 
+// Catching an object of a virtual class by value using its
+// base class is weird, unintuitive, and should probably be avoided
 TEST(Exceptions, obj_virt_throw_valuecatch_base)
 {
     int t1=0, t2=0, t3=0;
@@ -147,9 +149,9 @@ TEST(Exceptions, obj_virt_throw_valuecatch_base)
         t3 = e.get_v3();
     }
 
-    ASSERT_EQ(t1, 23);
-    ASSERT_EQ(t2, 1337);
-    ASSERT_EQ(t3, 0xdeadbeef);
+    ASSERT_EQ(t1, 11);
+    ASSERT_EQ(t2, 22);
+    ASSERT_EQ(t3, 33);
 }
 
 TEST(Exceptions, obj_virt_throw_refcatch_base)
@@ -195,9 +197,9 @@ TEST(Exceptions, obj_virt_throw_valuecatch_base_const)
         t3 = e.get_v3();
     }
 
-    ASSERT_EQ(t1, 23);
-    ASSERT_EQ(t2, 1337);
-    ASSERT_EQ(t3, 0xdeadbeef);
+    ASSERT_EQ(t1, 11);
+    ASSERT_EQ(t2, 22);
+    ASSERT_EQ(t3, 33);
 }
 
 TEST(Exceptions, obj_virt_throw_refcatch_base_const)
@@ -271,7 +273,7 @@ TEST(Exceptions, obj_virt_throw_valuecatch_rethrow_copy)
         t3 = e.get_v3();
     }
 
-    ASSERT_EQ(t1, 23);
-    ASSERT_EQ(t2, 1337);
-    ASSERT_EQ(t3, 0xdeadbeef);
+    ASSERT_EQ(t1, 11);
+    ASSERT_EQ(t2, 22);
+    ASSERT_EQ(t3, 33);
 }
