@@ -8,6 +8,7 @@
 
 #define WINAPI __stdcall
 #define CALLBACK WINAPI
+#define PASCAL WINAPI
 
 #define MAX_PATH 260
 

@@ -1,7 +1,7 @@
 NXDK_NET=y
 
 WS2_32_SRCS := \
-	$(wildcard $(NXDK_DIR)/lib/winapi/ws2_32/*.c)
+	$(NXDK_DIR)/lib/winapi/ws2_32/endianess.c
 
 WS2_32_OBJS = $(addsuffix .obj, $(basename $(WS2_32_SRCS)))
 

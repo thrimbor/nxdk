@@ -1,14 +1,24 @@
 #ifndef __WINSOCK2_H__
 #define __WINSOCK2_H__
 
-int WSAAPI WSAHtonl (SOCKET s, u_long hostlong, U_long *lpnetlong);
-int WSAAPI WSAHtons (SOCKET s, u_short hostshort, U_short *lpnetshort);
+#include <windef.h>
 
-int WSAAPI WSAGetLastError();
-void WSAAPI WSASetLastError (int iError);
+#define WSAAPI FAR PASCAL
 
-int WSAAPI WSARecvFrom (SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, sockaddr *lpFrom, LPINT lpFromlen, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
-int WSAAPI WSASendTo (SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesSent, DWORD dwFlags, const sockaddr *lpTo, int ITolen, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
+typedef unsigned char u_char;
+typedef unsigned short u_short;
+typedef unsigned int u_int;
+typedef unsigned long u_long;
 
+unsigned __int64 htond (double Value);
+unsigned __int32 htonf (float Value);
+u_long WSAAPI htonl (u_long hostlong);
+unsigned __int64 htonll (unsigned __int64 Value);
+u_short WSAAPI htons (u_short hostshort);
+double ntohd (unsigned __int64 Value);
+float ntohf (unsigned __int32 Value);
+u_long WSAAPI ntohl (u_long netlong);
+unsigned __int64 ntohll (unsigned __int64 Value);
+u_short WSAAPI ntohs (u_short netshort);
 
 #endif
