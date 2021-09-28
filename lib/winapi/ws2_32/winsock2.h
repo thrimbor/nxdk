@@ -21,4 +21,7 @@ u_long WSAAPI ntohl (u_long netlong);
 unsigned __int64 ntohll (unsigned __int64 Value);
 u_short WSAAPI ntohs (u_short netshort);
 
+int WSAAPI WSAGetLastError (void);
+void WSAAPI WSASetLastError (int iError);
+
 #endif
