@@ -66,22 +66,22 @@ http_server_bsd(void) {
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-    if ((rv = getaddrinfo(NULL, PORT, &hints, &ai)) != 0) {
+    if ((rv = lwip_getaddrinfo(NULL, PORT, &hints, &ai)) != 0) {
         debugPrint("Error: selectserver\n");
         exit(1);
     }
 
     for(p = ai; p != NULL; p = p->ai_next) {
-        listener = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        listener = lwip_socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (listener < 0) {
             continue;
         }
 
         // lose the pesky "address already in use" error message
-        setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+        lwip_setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 
-        if (bind(listener, p->ai_addr, p->ai_addrlen) < 0) {
-            close(listener);
+        if (lwip_bind(listener, p->ai_addr, p->ai_addrlen) < 0) {
+            lwip_close(listener);
             continue;
         }
 
@@ -94,10 +94,10 @@ http_server_bsd(void) {
         exit(2);
     }
 
-    freeaddrinfo(ai); // all done with this
+    lwip_freeaddrinfo(ai); // all done with this
 
     // listen
-    if (listen(listener, 10) == -1) {
+    if (lwip_listen(listener, 10) == -1) {
         debugPrint("Error: listen\n");
         exit(3);
     }
@@ -111,7 +111,7 @@ http_server_bsd(void) {
     // main loop
     for(;;) {
         read_fds = master; // copy it
-        if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
+        if (lwip_select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
             debugPrint("Error: select\n");
             exit(4);
         }
@@ -122,7 +122,7 @@ http_server_bsd(void) {
                 if (i == listener) {
                     // handle new connections
                     addrlen = sizeof remoteaddr;
-                    newfd = accept(listener,
+                    newfd = lwip_accept(listener,
                                    (struct sockaddr *)&remoteaddr,
                                    &addrlen);
 
@@ -135,14 +135,14 @@ http_server_bsd(void) {
                         }
                         printf("selectserver: new connection from %s on "
                                "socket %d\n",
-                               inet_ntop(remoteaddr.ss_family,
+                               lwip_inet_ntop(remoteaddr.ss_family,
                                          get_in_addr((struct sockaddr*)&remoteaddr),
                                          remoteIP, INET6_ADDRSTRLEN),
                                newfd);
                     }
                 } else {
                     // handle data from a client
-                    if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
+                    if ((nbytes = lwip_recv(i, buf, sizeof buf, 0)) <= 0) {
                         // got error or connection closed by client
                         if (nbytes == 0) {
                             // connection closed
@@ -150,7 +150,7 @@ http_server_bsd(void) {
                         } else {
                             printf("Error: recv\n");
                         }
-                        close(i); // bye!
+                        lwip_close(i); // bye!
                         FD_CLR(i, &master); // remove from master set
                     } else if (nbytes >= 4) {
                         if (buf[nbytes-4] == '\r' &&
@@ -161,8 +161,8 @@ http_server_bsd(void) {
                             RtlTimeToTimeFields(&time, &tfields);
                             sprintf(http_body, http_body_template, tfields.Year, tfields.Month,
                                     tfields.Day, tfields.Hour, tfields.Minute, tfields.Second);
-                            send(i, http_html_hdr, sizeof http_html_hdr-1, 0);
-                            send(i, http_body, sizeof http_body-1, 0);
+                            lwip_send(i, http_html_hdr, sizeof http_html_hdr-1, 0);
+                            lwip_send(i, http_body, sizeof http_body-1, 0);
                         }
                     }
                 } // END handle data from client
