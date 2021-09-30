@@ -410,6 +410,21 @@
  */
 #define LWIP_SOCKET                     1
 
+/**
+ * LWIP_COMPAT_SOCKETS==1: Enable BSD-style sockets functions names through defines.
+ * LWIP_COMPAT_SOCKETS==2: Same as ==1 but correctly named functions are created.
+ * While this helps code completion, it might conflict with existing libraries.
+ * (only used if you use sockets.c)
+ */
+#define LWIP_COMPAT_SOCKETS             0
+
+/**
+ * LWIP_POSIX_SOCKETS_IO_NAMES==1: Enable POSIX-style sockets functions names.
+ * Disable this option if you use a POSIX operating system that uses the same
+ * names (read, write & close). (only used if you use sockets.c)
+ */
+#define LWIP_POSIX_SOCKETS_IO_NAMES     0
+
 /*
    ----------------------------------------
    ---------- Statistics options ----------
