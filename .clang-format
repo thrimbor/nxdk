@@ -1,0 +1,21 @@
+﻿---
+AlignAfterOpenBracket: Align
+BreakBeforeBraces: Linux
+ColumnLimit: '0'
+FixNamespaceComments: 'true'
+IncludeBlocks: Preserve
+IndentCaseLabels: 'true'
+IndentPPDirectives: BeforeHash
+IndentWidth: '4'
+Language: Cpp
+NamespaceIndentation: All
+PointerAlignment: Right
+SortIncludes: 'true'
+SpaceAfterTemplateKeyword: 'false'
+SpaceBeforeCtorInitializerColon: 'true'
+SpaceBeforeInheritanceColon: 'true'
+SpaceBeforeParens: ControlStatements
+TabWidth: '4'
+UseTab: Never
+
+...
