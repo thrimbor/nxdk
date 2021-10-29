@@ -2,7 +2,8 @@ NXDK_NET=y
 
 WS2_32_SRCS := \
 	$(NXDK_DIR)/lib/winapi/ws2_32/endianess.c \
-	$(NXDK_DIR)/lib/winapi/ws2_32/error.c
+	$(NXDK_DIR)/lib/winapi/ws2_32/error.c \
+	$(NXDK_DIR)/lib/winapi/ws2_32/socket.c
 
 WS2_32_OBJS = $(addsuffix .obj, $(basename $(WS2_32_SRCS)))
 
