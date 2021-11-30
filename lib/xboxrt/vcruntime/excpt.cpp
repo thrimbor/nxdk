@@ -279,13 +279,22 @@ static inline void *call_ebp_func(void *func, void *_ebp)
 
 extern "C" int CxxFrameHandlerVC8 (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRATION_CXX *pRN, CONTEXT *pContext, void *pDC, FuncInfo *functionInfo);
 
-extern "C" int _cxx_nested_throw_handler (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRATION_CXX *pRN, CONTEXT *pContext, void *pDC)
+struct NESTED_FRAME
+{
+    EXCEPTION_REGISTRATION      frame;     /* standard exception frame */
+    EXCEPTION_RECORD    *prev_rec;  /* previous record to restore in thread data */
+    EXCEPTION_REGISTRATION_CXX *cxx_frame; /* frame of parent exception */
+    FuncInfo  *descr;     /* descriptor of parent exception */
+    int                  trylevel;  /* current try level */
+};
+
+extern "C" int _cxx_nested_throw_handler (PEXCEPTION_RECORD pExcept, NESTED_FRAME *pRN, CONTEXT *pContext, void *pDC)
 {
     if (pExcept->ExceptionFlags & (EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND)) {
         // FIXME: Do we destroy the exception object here or something?
         return DISPOSITION_CONTINUE_SEARCH;
     }
-    DbgPrint("rethrow?\n");
+    DbgPrint("We have a nested exception\n");
 
     DbgPrint("EI:\n0: %d\n1: %d\n2: %d\n", pExcept->ExceptionInformation[0], pExcept->ExceptionInformation[1], pExcept->ExceptionInformation[2]);
 
@@ -293,7 +302,7 @@ extern "C" int _cxx_nested_throw_handler (PEXCEPTION_RECORD pExcept, EXCEPTION_R
         DbgPrint("Looks like rethrow\n");
     }
 
-    return CxxFrameHandlerVC8(pExcept, pRN, pContext, pDC, nullptr);
+    return CxxFrameHandlerVC8(pExcept, (EXCEPTION_REGISTRATION_CXX *)pRN, pContext, pDC, pRN->descr);
 }
 
 static int RethrowFilter (EXCEPTION_POINTERS *p)
@@ -321,8 +330,55 @@ static int RethrowFilter (EXCEPTION_POINTERS *p)
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-static void *call_catch_block(void *func, void *_ebp, EXCEPTION_REGISTRATION_CXX *pRN)
+static inline EXCEPTION_REGISTRATION *__wine_push_frame( EXCEPTION_REGISTRATION *frame )
 {
+//#if defined(__GNUC__) && defined(__i386__)
+    EXCEPTION_REGISTRATION *prev;
+    __asm__ __volatile__(".byte 0x64\n\tmovl (0),%0"
+                         "\n\tmovl %0,(%1)"
+                         "\n\t.byte 0x64\n\tmovl %1,(0)"
+                         : "=&r" (prev) : "r" (frame) : "memory" );
+    return prev;
+/*#else
+    NT_TIB *teb = (NT_TIB *)NtCurrentTeb();
+    frame->Prev = teb->ExceptionList;
+    teb->ExceptionList = frame;
+    return frame->Prev;
+#endif
+*/
+}
+
+static inline EXCEPTION_REGISTRATION *__wine_pop_frame( EXCEPTION_REGISTRATION *frame )
+{
+//#if defined(__GNUC__) && defined(__i386__)
+    __asm__ __volatile__(".byte 0x64\n\tmovl %0,(0)"
+                         : : "r" (frame->prev) : "memory" );
+    return frame->prev;
+/*
+#else
+    NT_TIB *teb = (NT_TIB *)NtCurrentTeb();
+    teb->ExceptionList = frame->Prev;
+    return frame->Prev;
+#endif
+*/
+}
+
+static void *call_catch_block(void *func, void *_ebp, EXCEPTION_REGISTRATION_CXX *pRN, FuncInfo *functionInfo)
+{
+    NESTED_FRAME nested_frame;
+    nested_frame.frame.handler = _cxx_nested_throw_handler;
+    //nested_frame.prev_rec = //thread_data->exc_record;
+    nested_frame.cxx_frame = pRN;
+    nested_frame.descr = functionInfo;
+    //nested_frame.trylevel = nested_trylevel + 1;
+
+    __wine_push_frame(&nested_frame.frame);
+    //thread_data->exc_record = rec;
+    void *continue_addr = call_ebp_func(func, _ebp);
+    //thread_data->exc_record = nested_frame.prev_rc;
+    __wine_pop_frame(&nested_frame.frame);
+
+    /*
     DWORD _esp;
     DWORD save_esp = ((DWORD*)pRN)[-1];
     DbgPrint("Saved esp: %x\n", save_esp);
@@ -332,7 +388,7 @@ static void *call_catch_block(void *func, void *_ebp, EXCEPTION_REGISTRATION_CXX
     asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
     DbgPrint("%d: esp: %x\n", __LINE__, _esp);
 
-    /*__try {*/
+    /*__try {
         __try {
             asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
             DbgPrint("%d: esp: %x\n", __LINE__, _esp);
@@ -345,12 +401,12 @@ static void *call_catch_block(void *func, void *_ebp, EXCEPTION_REGISTRATION_CXX
             continue_addr = nullptr;
         }
         // FIXME: Should we intercept and handle other throws here, too?
-    /*} __finally {*/
+    /*} __finally {
         asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
         DbgPrint("%d: esp: %x\n", __LINE__, _esp);
         DbgPrint("> %d: %08x\n", __LINE__, pRN);
         DbgPrint("__finally restoring esp: %x\n", save_esp);
-        ((DWORD*)pRN)[-1] = save_esp;
+        //((DWORD*)pRN)[-1] = save_esp;
         DbgPrint("> %d\n", __LINE__);
     /*}*/
 
@@ -479,13 +535,13 @@ extern "C" int CxxFrameHandlerVC8 (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRA
     DbgPrint("Saving esp: %x\n", save_esp);
 
     assert(functionInfo->magicNumber == MAGIC_VC8);
-
+DbgPrint("> %d\n", __LINE__);
     // FUNC_DESCR_SYNCHRONOUS = 1
     if (!(functionInfo->EHFlags & 1) || (pExcept->ExceptionCode != CXX_EXCEPTION)) {
         DbgPrint("Not a C++ exception, skipping\n");
         return DISPOSITION_CONTINUE_SEARCH;
     }
-
+DbgPrint("> %d\n", __LINE__);
     if (pExcept->ExceptionFlags & (EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND)) {
         DbgPrint("maxState: %d\n", functionInfo->maxState);
         if (functionInfo->maxState != 0) {
@@ -493,10 +549,10 @@ extern "C" int CxxFrameHandlerVC8 (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRA
         }
         return DISPOSITION_CONTINUE_SEARCH;
     }
-
+DbgPrint("> %d\n", __LINE__);
     _ThrowInfo *throwInfo = (_ThrowInfo*)pExcept->ExceptionInformation[2];
     assert(throwInfo);
-
+DbgPrint("> %d\n", __LINE__);
     for (DWORD i = 0; i < functionInfo->nTryBlocks; i++) {
         const DWORD tryLow = functionInfo->pTryBlockMap[i].tryLow;
         const DWORD tryHigh = functionInfo->pTryBlockMap[i].tryHigh;
@@ -521,7 +577,7 @@ extern "C" int CxxFrameHandlerVC8 (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRA
         DbgPrint("> %d\n", __LINE__);
         pRN->id = tryBlock->tryHigh + 1;
 DbgPrint("> %d\n", __LINE__);
-        void *continue_addr = call_catch_block(catchBlock->addressOfHandler, &pRN->_ebp, pRN);
+        void *continue_addr = call_catch_block(catchBlock->addressOfHandler, &pRN->_ebp, pRN, functionInfo);
 DbgPrint("> %d\n", __LINE__);
         // Restore potentially clobbered saved esp before continuing execution
         DbgPrint("Restoring esp: %x\n", save_esp);
