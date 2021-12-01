@@ -39,6 +39,23 @@ extern "C" int _nested_unwind_handler (_EXCEPTION_RECORD *pExceptionRecord, EXCE
     return DISPOSITION_COLLIDED_UNWIND;
 }
 
+static inline void *call_ebp_func(void *func, void *_ebp)
+{
+    void *result;
+
+    asm volatile (
+        "pushl %%ebp;"
+        "movl %%ebx, %%ebp;"
+        "call *%%eax;"
+        "popl %%ebp;"
+        : "=a"(result)
+        : "a"(func), "b"(_ebp)
+        : "ecx", "edx", "memory"
+    );
+
+    return result;
+}
+
 extern "C" void _local_unwind2 (EXCEPTION_REGISTRATION_SEH3 *pRegistrationFrame, int stop)
 {
     // Manually install exception handler frame
@@ -69,8 +86,7 @@ extern "C" void _local_unwind2 (EXCEPTION_REGISTRATION_SEH3 *pRegistrationFrame,
         if (!scopeTable[oldTrylevel].FilterFunction) {
             // If no filter funclet is present, then it's a __finally statement
             // instead of an __except statement
-            auto finallyFunclet = reinterpret_cast<void (*)()>(scopeTable[oldTrylevel].HandlerFunction);
-            finallyFunclet();
+            call_ebp_func(scopeTable[oldTrylevel].HandlerFunction, &pRegistrationFrame->_ebp);
         }
     }
 
@@ -102,18 +118,7 @@ extern "C" int _except_handler3 (_EXCEPTION_RECORD *pExceptionRecord, EXCEPTION_
 
     if (pExceptionRecord->ExceptionFlags & (EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND)) {
         // We're in an unwinding pass, so unwind all local scopes
-        // Unwinding must be done with the ebp of the frame in which we want to unwind
-        const DWORD scopeEbp = (DWORD)&pRegistrationFrame->_ebp;
-        asm volatile (
-            "pushl %%ebp;"
-            "movl %0, %%ebp;"
-            "pushl %2;"
-            "pushl %1;"
-            "call __local_unwind2;" // Call _local_unwind2(pRegistrationFrame, TRYLEVEL_NONE);
-            "addl $8, %%esp;"
-            "popl %%ebp;"
-            : : "r"(scopeEbp), "r"(pRegistrationFrame), "i"(TRYLEVEL_NONE) : "eax", "ecx", "edx");
-
+        _local_unwind2(pRegistrationFrame, TRYLEVEL_NONE);
         return DISPOSITION_CONTINUE_SEARCH;
     }
 
@@ -154,27 +159,14 @@ extern "C" int _except_handler3 (_EXCEPTION_RECORD *pExceptionRecord, EXCEPTION_
                 const DWORD scopeEbp = (DWORD)&pRegistrationFrame->_ebp;
                 const DWORD newTrylevel = scopeTable[currentTrylevel].EnclosingLevel;
                 const DWORD handlerFunclet = (DWORD)scopeTable[currentTrylevel].HandlerFunction;
+
+                _local_unwind2(pRegistrationFrame, currentTrylevel);
+                pRegistrationFrame->TryLevel = newTrylevel;
+
                 asm volatile (
                     "movl %0, %%ebp;"
-
-                    "pushl %%ecx;"
-                    "pushl %%ebx;"
-
-                    // Unwind all scopes up to the one handling the exception
-                    "pushl %%eax;"
-                    "pushl %%edx;"
-                    "call __local_unwind2;" // _local_unwind2(pRegistrationFrame, currentTrylevel);
-                    "popl %%edx;"
-                    "addl $4, %%esp;"
-
-                    "popl %%ebx;"
-                    "popl %%ecx;"
-
-                    // Set the new trylevel in EXCEPTION_REGISTRATION_SEH3
-                    "movl %%ecx, 12(%%edx);"
-                    // Jump into the handler
                     "jmp *%%ebx;"
-                    : : "r"(scopeEbp), "a"(currentTrylevel), "b"(handlerFunclet), "c"(newTrylevel), "d"(pRegistrationFrame) : "memory");
+                    : : "r"(scopeEbp), "b"(handlerFunclet));
             }
         }
 
@@ -260,50 +252,7 @@ static HandlerType *getCatchBlock (CatchableType **catchableType, TryBlockMapEnt
     return nullptr;
 }
 
-static inline void *call_ebp_func(void *func, void *_ebp)
-{
-    void *result;
-
-    asm volatile (
-        "pushl %%ebp;"
-        "movl %%ebx, %%ebp;"
-        "call *%%eax;"
-        "popl %%ebp;"
-        : "=a"(result)
-        : "a"(func), "b"(_ebp)
-        : "ecx", "edx", "memory"
-    );
-
-    return result;
-}
-
 extern "C" int CxxFrameHandlerVC8 (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRATION_CXX *pRN, CONTEXT *pContext, void *pDC, FuncInfo *functionInfo);
-
-struct NESTED_FRAME
-{
-    EXCEPTION_REGISTRATION      frame;     /* standard exception frame */
-    EXCEPTION_RECORD    *prev_rec;  /* previous record to restore in thread data */
-    EXCEPTION_REGISTRATION_CXX *cxx_frame; /* frame of parent exception */
-    FuncInfo  *descr;     /* descriptor of parent exception */
-    int                  trylevel;  /* current try level */
-};
-
-extern "C" int _cxx_nested_throw_handler (PEXCEPTION_RECORD pExcept, NESTED_FRAME *pRN, CONTEXT *pContext, void *pDC)
-{
-    if (pExcept->ExceptionFlags & (EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND)) {
-        // FIXME: Do we destroy the exception object here or something?
-        return DISPOSITION_CONTINUE_SEARCH;
-    }
-    DbgPrint("We have a nested exception\n");
-
-    DbgPrint("EI:\n0: %d\n1: %d\n2: %d\n", pExcept->ExceptionInformation[0], pExcept->ExceptionInformation[1], pExcept->ExceptionInformation[2]);
-
-    if (pExcept->ExceptionInformation[2] == 0) {
-        DbgPrint("Looks like rethrow\n");
-    }
-
-    return CxxFrameHandlerVC8(pExcept, (EXCEPTION_REGISTRATION_CXX *)pRN, pContext, pDC, pRN->descr);
-}
 
 static int RethrowFilter (EXCEPTION_POINTERS *p)
 {
@@ -320,7 +269,11 @@ static int RethrowFilter (EXCEPTION_POINTERS *p)
             || er->ExceptionInformation[0] == MAGIC_VC7
             || er->ExceptionInformation[0] == MAGIC_VC8)) {
         if (er->ExceptionInformation[1] == 0 && er->ExceptionInformation[2] == 0) {
+            DbgPrint("It's a simple rethrow\n");
             return EXCEPTION_EXECUTE_HANDLER;
+        } else {
+            DbgPrint("Another C++ exception was thrown\n");
+            //return EXCEPTION_EXECUTE_HANDLER;
         }
     }
 
@@ -330,56 +283,10 @@ static int RethrowFilter (EXCEPTION_POINTERS *p)
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-static inline EXCEPTION_REGISTRATION *__wine_push_frame( EXCEPTION_REGISTRATION *frame )
-{
-//#if defined(__GNUC__) && defined(__i386__)
-    EXCEPTION_REGISTRATION *prev;
-    __asm__ __volatile__(".byte 0x64\n\tmovl (0),%0"
-                         "\n\tmovl %0,(%1)"
-                         "\n\t.byte 0x64\n\tmovl %1,(0)"
-                         : "=&r" (prev) : "r" (frame) : "memory" );
-    return prev;
-/*#else
-    NT_TIB *teb = (NT_TIB *)NtCurrentTeb();
-    frame->Prev = teb->ExceptionList;
-    teb->ExceptionList = frame;
-    return frame->Prev;
-#endif
-*/
-}
-
-static inline EXCEPTION_REGISTRATION *__wine_pop_frame( EXCEPTION_REGISTRATION *frame )
-{
-//#if defined(__GNUC__) && defined(__i386__)
-    __asm__ __volatile__(".byte 0x64\n\tmovl %0,(0)"
-                         : : "r" (frame->prev) : "memory" );
-    return frame->prev;
-/*
-#else
-    NT_TIB *teb = (NT_TIB *)NtCurrentTeb();
-    teb->ExceptionList = frame->Prev;
-    return frame->Prev;
-#endif
-*/
-}
-
 static void *call_catch_block(void *func, void *_ebp, EXCEPTION_REGISTRATION_CXX *pRN, FuncInfo *functionInfo)
 {
-    NESTED_FRAME nested_frame;
-    nested_frame.frame.handler = _cxx_nested_throw_handler;
-    //nested_frame.prev_rec = //thread_data->exc_record;
-    nested_frame.cxx_frame = pRN;
-    nested_frame.descr = functionInfo;
-    //nested_frame.trylevel = nested_trylevel + 1;
-
-    __wine_push_frame(&nested_frame.frame);
-    //thread_data->exc_record = rec;
-    void *continue_addr = call_ebp_func(func, _ebp);
-    //thread_data->exc_record = nested_frame.prev_rc;
-    __wine_pop_frame(&nested_frame.frame);
-
-    /*
     DWORD _esp;
+    DWORD _ebp_print;
     DWORD save_esp = ((DWORD*)pRN)[-1];
     DbgPrint("Saved esp: %x\n", save_esp);
     void *continue_addr;
@@ -388,28 +295,39 @@ static void *call_catch_block(void *func, void *_ebp, EXCEPTION_REGISTRATION_CXX
     asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
     DbgPrint("%d: esp: %x\n", __LINE__, _esp);
 
-    /*__try {
+    asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp_print));
+    DbgPrint("%s %d: ebp: %x\n", __FUNCTION__, __LINE__, _ebp_print);
+
+    __try {
         __try {
+            asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp_print));
+            DbgPrint("%s %d: ebp: %x\n", __FUNCTION__, __LINE__, _ebp_print);
             asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
             DbgPrint("%d: esp: %x\n", __LINE__, _esp);
             continue_addr = call_ebp_func(func, _ebp);
             asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
             DbgPrint("%d: esp: %x\n", __LINE__, _esp);
         } __except (RethrowFilter((EXCEPTION_POINTERS *)_exception_info())) {
+            asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp_print));
+            DbgPrint("%s %d: ebp: %x\n", __FUNCTION__, __LINE__, _ebp_print);
             // we need a proper filter here!
             DbgPrint("RETHROW!\n");
             continue_addr = nullptr;
         }
         // FIXME: Should we intercept and handle other throws here, too?
-    /*} __finally {
+    } __finally {
+        asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp_print));
+        DbgPrint("%s %d: ebp: %x\n", __FUNCTION__, __LINE__, _ebp_print);
         asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
         DbgPrint("%d: esp: %x\n", __LINE__, _esp);
         DbgPrint("> %d: %08x\n", __LINE__, pRN);
         DbgPrint("__finally restoring esp: %x\n", save_esp);
-        //((DWORD*)pRN)[-1] = save_esp;
+        ((DWORD*)pRN)[-1] = save_esp;
         DbgPrint("> %d\n", __LINE__);
-    /*}*/
+    }
 
+    asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp_print));
+    DbgPrint("%s %d: ebp: %x\n", __FUNCTION__, __LINE__, _ebp_print);
     return continue_addr;
 }
 
