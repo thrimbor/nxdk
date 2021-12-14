@@ -1,5 +1,4 @@
 #include "nunit.h"
-#include <xboxkrnl/xboxkrnl.h>
 
 class ThrowTestClassR {
     public:
@@ -9,7 +8,6 @@ class ThrowTestClassR {
     ThrowTestClassR(int v1, int v2, int v3) : v1(v1), v2(v2), v3(v3) {};
 };
 
-/*
 TEST(Exceptions, obj_simple_rethrow)
 {
     int t1=0, t2=0, t3=0;
@@ -33,58 +31,31 @@ TEST(Exceptions, obj_simple_rethrow)
     ASSERT_EQ(t2, 1337);
     ASSERT_EQ(t3, 0xdeadbeef);
 }
-*/
 
 TEST(Exceptions, obj_simple_rethrow_copy)
 {
     int t1=0, t2=0, t3=0;
-    int _esp;
-    int _ebp;
-    DbgPrint("e> %d\n", __LINE__);
-    asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
-    DbgPrint("e> %d esp: %x\n", __LINE__, _esp);
-    asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp));
-    DbgPrint("e> %d ebp: %x\n", __LINE__, _ebp);
     try {
         try {
-            DbgPrint("e> %d\n", __LINE__);
-            asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
-            DbgPrint("e> %d esp: %x\n", __LINE__, _esp);
-            asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp));
-            DbgPrint("e> %d ebp: %x\n", __LINE__, _ebp);
             throw ThrowTestClassR(23, 1337, 0xdeadbeef);
-            DbgPrint("e> %d\n", __LINE__);
             ASSERT_NOREACH();
         } catch (ThrowTestClassR e) {
-            DbgPrint("e> %d\n", __LINE__);
-            asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
-            DbgPrint("e> %d esp: %x\n", __LINE__, _esp);
-            asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp));
-            DbgPrint("e> %d ebp: %x\n", __LINE__, _ebp);
             throw e;
-            DbgPrint("e> %d\n", __LINE__);
         }
         ASSERT_NOREACH();
     } catch (int i) {
         ASSERT_NOREACH();
     } catch (ThrowTestClassR e) {
-        DbgPrint("e> %d\n", __LINE__);
         t1 = e.v1;
         t2 = e.v2;
         t3 = e.v3;
     }
-    DbgPrint("e> %d\n", __LINE__);
 
-    asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
-    DbgPrint("e> %d esp: %x\n", __LINE__, _esp);
-    asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp));
-    DbgPrint("e> %d ebp: %x\n", __LINE__, _ebp);
     ASSERT_EQ(t1, 23);
     ASSERT_EQ(t2, 1337);
     ASSERT_EQ(t3, 0xdeadbeef);
-    DbgPrint("e> %d\n", __LINE__);
 }
-/*
+
 TEST(Exceptions, obj_simple_nested_throw)
 {
     int ti=0;
@@ -154,4 +125,3 @@ TEST(Exceptions, obj_simple_rethrow_copy_sametryblock)
     ASSERT_EQ(t2, 1337);
     ASSERT_EQ(t3, 0xdeadbeef);
 }
-*/
