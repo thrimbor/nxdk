@@ -285,49 +285,34 @@ static int RethrowFilter (EXCEPTION_POINTERS *p)
 
 static void *call_catch_block(void *func, void *_ebp, EXCEPTION_REGISTRATION_CXX *pRN, FuncInfo *functionInfo)
 {
-    DWORD _esp;
-    DWORD _ebp_print;
     DWORD save_esp = ((DWORD*)pRN)[-1];
     DbgPrint("Saved esp: %x\n", save_esp);
     void *continue_addr;
 
     DbgPrint("> %d: %08x\n", __LINE__, pRN);
+    DWORD _esp;
     asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
-    DbgPrint("%d: esp: %x\n", __LINE__, _esp);
-
-    asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp_print));
-    DbgPrint("%s %d: ebp: %x\n", __FUNCTION__, __LINE__, _ebp_print);
+    DbgPrint("e> %d esp: %x\n", __LINE__, _esp);
 
     __try {
         __try {
-            asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp_print));
-            DbgPrint("%s %d: ebp: %x\n", __FUNCTION__, __LINE__, _ebp_print);
-            asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
-            DbgPrint("%d: esp: %x\n", __LINE__, _esp);
             continue_addr = call_ebp_func(func, _ebp);
-            asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
-            DbgPrint("%d: esp: %x\n", __LINE__, _esp);
         } __except (RethrowFilter((EXCEPTION_POINTERS *)_exception_info())) {
-            asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp_print));
-            DbgPrint("%s %d: ebp: %x\n", __FUNCTION__, __LINE__, _ebp_print);
             // we need a proper filter here!
             DbgPrint("RETHROW!\n");
             continue_addr = nullptr;
         }
         // FIXME: Should we intercept and handle other throws here, too?
     } __finally {
-        asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp_print));
-        DbgPrint("%s %d: ebp: %x\n", __FUNCTION__, __LINE__, _ebp_print);
-        asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
-        DbgPrint("%d: esp: %x\n", __LINE__, _esp);
-        DbgPrint("> %d: %08x\n", __LINE__, pRN);
+        DbgPrint("> %d: pRN%08x\n", __LINE__, pRN);
         DbgPrint("__finally restoring esp: %x\n", save_esp);
+        DbgPrint("previously: %x\n", ((DWORD*)pRN)[-1]);
         ((DWORD*)pRN)[-1] = save_esp;
         DbgPrint("> %d\n", __LINE__);
     }
 
-    asm volatile ("movl %%ebp, %%eax" : "=a"(_ebp_print));
-    DbgPrint("%s %d: ebp: %x\n", __FUNCTION__, __LINE__, _ebp_print);
+    ((DWORD*)pRN)[-1] = save_esp;
+
     return continue_addr;
 }
 
@@ -498,8 +483,8 @@ DbgPrint("> %d\n", __LINE__);
         void *continue_addr = call_catch_block(catchBlock->addressOfHandler, &pRN->_ebp, pRN, functionInfo);
 DbgPrint("> %d\n", __LINE__);
         // Restore potentially clobbered saved esp before continuing execution
-        DbgPrint("Restoring esp: %x\n", save_esp);
-        ((DWORD*)pRN)[-1] = save_esp;
+        //DbgPrint("Restoring esp: %x\n", save_esp);
+        //((DWORD*)pRN)[-1] = save_esp;
 DbgPrint("> %d\n", __LINE__);
         // TODO: Check correctness
         if (!continue_addr) {
