@@ -5,6 +5,7 @@ clang \
     -march=pentium3 \
     -fuse-ld=nxdk-link \
     -ffreestanding \
+    -nostdinc \
     -nostdlib \
     -fno-builtin \
     -I${NXDK_DIR}/lib \
