@@ -54,7 +54,7 @@
 #include <xboxkrnl/xboxkrnl.h>
 
 static unsigned int g_rx_buffer_packetsize;
-static unsigned char *g_rx_buffer, *g_tx_buffer;
+static unsigned char *g_rx_buffer;
 extern struct netif *g_pnetif;
 
 /**
@@ -138,20 +138,23 @@ low_level_init(struct netif *netif)
       0xFFFFFFFF, //highest acceptable
       0,      //no need to align to specific boundaries multiple
       PAGE_READWRITE);
-
-  // This will be passed to the hardware, so it must be uncached
-  g_tx_buffer=(unsigned char *)MmAllocateContiguousMemoryEx(
-      1520,
-      0,    //lowest acceptable
-      0xFFFFFFFF, //highest acceptable
-      0,      //no need to align to specific boundaries multiple
-      PAGE_READWRITE | PAGE_NOCACHE);
-
-  if (!g_rx_buffer || !g_tx_buffer)
+  if (!g_rx_buffer)
   {
     debugPrint("Failed to allocate packet buffer!\n");
     abort();
   }
+}
+
+/**
+ * This function gets registered as callback function to free pbufs after the
+ * NIC driver is done sending their contents.
+ *
+ * @param userdata the pbuf address, supplied by low_level_output
+ */
+void free_pbuf_callback(void *userdata)
+{
+  struct pbuf *p = (struct pbuf *)userdata;
+  pbuf_free(p);
 }
 
 /**
@@ -174,32 +177,41 @@ static err_t
 low_level_output(struct netif *netif, struct pbuf *p)
 {
   struct nforceif *nforceif = netif->state;
-  struct pbuf *q;
 
-  unsigned long buf_pos = 0;
+  size_t pbufCount = 0;
+  for (struct pbuf *q = p; q != NULL; q = q->next) {
+    pbufCount++;
+  }
 
-  //initiate transfer();
-  while (Pktdrv_GetQueuedTxPkts()>0) /* spin */; // FIXME!
+  int r = nvnetdrv_acquire_tx_descriptors(pbufCount);
+  if (!r) {
+    return ERR_MEM;
+  }
 
 #if ETH_PAD_SIZE
   pbuf_header(p, -ETH_PAD_SIZE); /* drop the padding word */
 #endif
 
-  for (q = p; q != NULL; q = q->next) {
-    /* Send the data from the pbuf to the interface, one pbuf at a
-       time. The size of the data in each pbuf is kept in the ->len
-       variable. */
-    //send data from(q->payload, q->len);
-    memcpy(g_tx_buffer+buf_pos, q->payload, q->len);
-    buf_pos += q->len;
+  nvnetdrv_descriptor_t descriptors[4];
+  size_t i = 0;
+  for (struct pbuf *q = p; q != NULL; q = q->next) {
+    descriptors[i].addr  = q->payload;
+    descriptors[i].length = q->len;
+    descriptors[i].callback = NULL;
+    i++;
   }
 
-  //signal that packet should be sent();
-  Pktdrv_SendPacket(g_tx_buffer, buf_pos);
+  descriptors[pbufCount - 1].userdata = (void *)p;
+  descriptors[pbufCount - 1].callback = free_pbuf_callback;
 
 #if ETH_PAD_SIZE
   pbuf_header(p, ETH_PAD_SIZE); /* reclaim the padding word */
 #endif
+
+  // Increase pbuf refcount so they don't get freed while the NIC requires them
+  pbuf_ref(p);
+
+  nvnetdrv_submit_tx_descriptors(descriptors, pbufCount);
 
   LINK_STATS_INC(link.xmit);
 

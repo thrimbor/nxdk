@@ -527,7 +527,7 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
     // Enable first descriptor last to keep the NIC from sending incomplete packets
     g_txDescriptors[descriptors_index].flags |= NV_TX_VALID;
 
-    // Keep track of how man descriptors are in use
+    // Keep track of how many descriptors are in use
     g_txDescriptorsInUseCount += count;
 
     reg32(NvRegTxRxControl) = NVREG_TXRXCTL_KICK;
