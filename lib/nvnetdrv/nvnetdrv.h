@@ -56,8 +56,6 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
  */
 void nvnetdrv_rx_release (size_t buffer_index);
 
-void nvnetdrv_rx_queue_buffer (void *buffer_virt);
-
 //void nvnetdrv_input (void *buffer, uint16_t length);
 
 #endif

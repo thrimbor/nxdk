@@ -111,19 +111,6 @@ static uint32_t nvnetdrv_rx_vtop (uint32_t virt_address)
     return virt_address - g_rxBufferVirtMinusPhys;
 }
 
-void nvnetdrv_rx_queue_buffer (void *buffer_virt)
-{
-    assert((uint32_t)buffer_virt >= (uint32_t)g_rx_buffers && (uint32_t)buffer_virt < (uint32_t)g_rx_buffers + g_rx_buffer_count*2048);
-
-    uint32_t virt_addr = (uint32_t)buffer_virt;
-
-    g_rxDescriptors[g_rxEndIndex].flags = NV_RX_AVAIL;
-    g_rxDescriptors[g_rxEndIndex].length = 2048;
-
-    // Increment g_rxEndIndex *after* setting up the descriptor
-    g_rxEndIndex = (g_rxEndIndex + 1) % RX_RING_SIZE;
-}
-
 static void nvnetdrv_handle_rx_irq (void)
 {
     uint32_t work_left = RX_RING_SIZE;
@@ -137,7 +124,7 @@ static void nvnetdrv_handle_rx_irq (void)
 
         if ((flags & NV_RX_DESCRIPTORVALID) == 0) {
             // Re-queue the buffer
-            nvnetdrv_rx_queue_buffer((void *)nvnetdrv_rx_ptov(g_rxDescriptors[g_rxBeginIndex].paddr));
+            nvnetdrv_rx_release(g_rxBeginIndex);
             goto next_packet;
         }
 
@@ -166,6 +153,7 @@ static void nvnetdrv_handle_rx_irq (void)
             if (flags & NV_RX_ERROR2) INC_STAT(rx_error2, 1);
             if (flags & NV_RX_ERROR1) INC_STAT(rx_error1, 1);
             if (flags & NV_RX_MISSEDFRAME) INC_STAT(rx_missedFrameError, 1);
+            nvnetdrv_rx_release(g_rxBeginIndex);
         }
 
 next_packet:
@@ -325,7 +313,8 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     //Setup the RX ring descriptors
     for (int i = 0; i < RX_RING_SIZE; i++)
     {
-        nvnetdrv_rx_queue_buffer(g_rx_buffers + (i * 2048));
+        g_rxDescriptors[i].paddr = MmGetPhysicalAddress(g_rx_buffers + (i * 2048));
+        nvnetdrv_rx_release(i);
     }
 
     //Mac is NOT reversed
