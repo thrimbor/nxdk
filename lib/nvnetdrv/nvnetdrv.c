@@ -185,6 +185,7 @@ static void nvnetdrv_handle_tx_irq (void)
 
         if (flags & NV_TX_VALID) {
             // We reached a descriptor that wasn't processed by hw yet
+            // FIXME: This triggered on hw for me, so there may be a bug somewhere
             assert(g_txDescriptorsInUseCount == 0);
             break;
         }
