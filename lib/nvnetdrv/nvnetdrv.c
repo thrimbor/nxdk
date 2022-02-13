@@ -5,9 +5,6 @@
 // - callback (or other thread, make threadsafe) can then free index to requeue
 //    ^ doesn't need to be IRQ-safe afaik
 
-#define RX_RING_SIZE 64
-#define TX_RING_SIZE 64
-
 #include "nvnetdrv.h"
 #include "nvnetdrv_regs.h"
 #include <assert.h>
@@ -16,7 +13,7 @@
 #include <stdint.h>
 #include <xboxkrnl/xboxkrnl.h>
 
-struct descriptor_t
+struct __attribute__((packed)) descriptor_t
 {
     uint32_t paddr;
     uint16_t length;
@@ -108,11 +105,12 @@ static uint32_t nvnetdrv_rx_vtop (uint32_t virt_address)
 
 void nvnetdrv_rx_queue_buffer (void *buffer_virt)
 {
-    assert(buffer_virt >= g_rx_buffers && buffer_virt < g_rx_buffers + g_rx_buffer_count*2048);
+    assert((uint32_t)buffer_virt >= (uint32_t)g_rx_buffers && (uint32_t)buffer_virt < (uint32_t)g_rx_buffers + g_rx_buffer_count*2048);
 
     uint32_t virt_addr = (uint32_t)buffer_virt;
 
-    // FIXME: Add buffer to the rx queue
+    g_rxDescriptors[g_rxEndIndex].flags = NV_RX_AVAIL;
+    g_rxDescriptors[g_rxEndIndex].length = 2048;
 
     // Increment g_rxEndIndex *after* setting up the descriptor
     g_rxEndIndex = (g_rxEndIndex + 1) % RX_RING_SIZE;
@@ -120,8 +118,8 @@ void nvnetdrv_rx_queue_buffer (void *buffer_virt)
 
 static void nvnetdrv_handle_rx_irq (void)
 {
-    // FIXME: Check loop conditions etc.
-    while (g_rxBeginIndex != g_rxEndIndex) {
+    uint32_t work_left = RX_RING_SIZE;
+    while (work_left) {
         uint16_t flags = g_rxDescriptors[g_rxBeginIndex].flags;
 
         if (flags & NV_RX_AVAIL) {
@@ -132,7 +130,7 @@ static void nvnetdrv_handle_rx_irq (void)
         if ((flags & NV_RX_DESCRIPTORVALID) == 0) {
             // Re-queue the buffer
             nvnetdrv_rx_queue_buffer((void *)nvnetdrv_rx_ptov(g_rxDescriptors[g_rxBeginIndex].paddr));
-            goto next_paket;
+            goto next_packet;
         }
 
         if (!(flags & NV_RX_ERROR) || (flags & NV_RX_FRAMINGERR)) {
@@ -145,12 +143,12 @@ static void nvnetdrv_handle_rx_irq (void)
 
             INC_STAT(rx_receivedPackets, 1);
 
-            uint32_t buffer_virt = nvnetdrv_rx_ptov(g_rxDescriptors[g_rxBeginIndex].length);
+            uint32_t buffer_virt = nvnetdrv_rx_ptov(g_rxDescriptors[g_rxBeginIndex].paddr);
             // Hand off the packet to the network stack
             // FIXME: We need to hand out the index, too! - I don't think we really do
             assert(g_rx_callback);
-            g_rx_callback((void *)buffer_virt, packet_length);
-            goto next_paket;
+            g_rx_callback(g_rxBeginIndex, (void *)buffer_virt, packet_length);
+            goto next_packet;
         } else {
             if (flags & NV_RX_FRAMINGERR) INC_STAT(rx_framingError, 1);
             if (flags & NV_RX_OVERFLOW) INC_STAT(rx_overflowError, 1);
@@ -162,8 +160,9 @@ static void nvnetdrv_handle_rx_irq (void)
             if (flags & NV_RX_MISSEDFRAME) INC_STAT(rx_missedFrameError, 1);
         }
 
-next_paket:
+next_packet:
         g_rxBeginIndex = (g_rxBeginIndex + 1) % RX_RING_SIZE;
+        work_left--;
     }
 
     INC_STAT(rx_interrupts, 1);
@@ -178,7 +177,12 @@ static void nvnetdrv_handle_tx_irq (void)
 
         if (flags & NV_TX_VALID) {
             // We reached a descriptor that wasn't processed by hw yet
+            assert(g_txDescriptorsInUseCount == 0);
             break;
+        }
+        if (tx_misc[g_txBeginIndex].callback)
+        {
+            tx_misc[g_txBeginIndex].callback(tx_misc[g_txBeginIndex].userdata);
         }
 
         freed_descriptors++;
@@ -260,6 +264,13 @@ static void NTAPI nvnetdrv_irq_thread (PKSTART_ROUTINE StartRoutine, PVOID Start
 }
 
 // FIXME: we need error codes or something
+// FIXME: Just temporary :)
+#define NVNET_OK 0
+#define NVNET_NO_MEM -1
+#define NVNET_NO_MAC -2
+#define NVNET_PHY_ERR -3
+#define NVNET_SYS_ERR -4
+
 int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
 {
     assert(!g_running);
@@ -271,7 +282,7 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     NTSTATUS status = ExQueryNonVolatileSetting(XC_FACTORY_ETHERNET_ADDR, &type, &g_ethAddr, 6, NULL);
     assert(status == STATUS_SUCCESS);
     if (!NT_SUCCESS(status)) {
-        return 0;
+        return NVNET_NO_MAC;
     }
 
     //_Static_Assert(RX_RING_SIZE <= 1024);
@@ -280,7 +291,7 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     void *descriptors = MmAllocateContiguousMemoryEx((RX_RING_SIZE + TX_RING_SIZE) * sizeof(struct descriptor_t), 0, 0xFFFFFFFF, 0, PAGE_READWRITE | PAGE_NOCACHE);
     assert(descriptors);
     if (!descriptors) {
-        return 0;
+        return NVNET_NO_MEM;
     }
 
     RtlZeroMemory(descriptors, (RX_RING_SIZE + TX_RING_SIZE) * sizeof(struct descriptor_t));
@@ -295,19 +306,30 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     assert(g_rx_buffers);
     if (!g_rx_buffers) {
         MmFreeContiguousMemory(descriptors);
-        return 0;
+        return NVNET_NO_MEM;
     }
 
     g_rxBufferVirtMinusPhys = ((uint32_t)g_rx_buffers) - (uint32_t)MmGetPhysicalAddress(g_rx_buffers);
 
+    //Setup the RX ring descriptors
+    for (int i = 0; i < RX_RING_SIZE; i++)
+    {
+        nvnetdrv_rx_queue_buffer(g_rx_buffers + (i * 2048));
+    }
 
-    // FIXME: Check this for correctness!
-    reg32(NvRegMacAddrA) = (g_ethAddr[5] << 0) | (g_ethAddr[4] << 8) | (g_ethAddr[3] << 16) | (g_ethAddr[2] << 24);
-    reg32(NvRegMacAddrB) = (g_ethAddr[1] << 0) | (g_ethAddr[0] << 8);
-    reg32(NvRegMulticastAddrA) = (g_ethAddr[0] << 0) | (g_ethAddr[1] << 8) | (g_ethAddr[2] << 16) | (g_ethAddr[3] << 24);
-    reg32(NvRegMulticastAddrB) = (g_ethAddr[4] << 0) | (g_ethAddr[5] << 8);
-    reg32(NvRegMulticastMaskA) = 0xFFFFFFFF;
-    reg32(NvRegMulticastMaskB) = 0x0000FFFF;
+    //Mac is NOT reversed
+    reg32(NvRegMacAddrA) = (g_ethAddr[0] << 0) | (g_ethAddr[1] << 8) | (g_ethAddr[2] << 16) | (g_ethAddr[3] << 24);
+    reg32(NvRegMacAddrB) = (g_ethAddr[4] << 0) | (g_ethAddr[5] << 8);
+    reg32(NvRegMulticastAddrA) = NVREG_MCASTMASKA_NONE;
+    reg32(NvRegMulticastAddrB) = NVREG_MCASTMASKB_NONE;
+    reg32(NvRegMulticastMaskA) = NVREG_MCASTMASKA_NONE;
+    reg32(NvRegMulticastMaskB) = NVREG_MCASTMASKB_NONE;
+
+    //FIXME: MSDash sets up these registers too: Needed?
+    //reg32(NvRegOffloadConfig) = NVREG_OFFLOAD_NORMAL;
+    //reg32(NvRegPacketFilterFlags) = (NVREG_PFF_ALWAYS_MYADDR | NVREG_PFF_MYADDR);
+    //reg32(NvRegDuplexMode) = NVREG_DUPLEX_MODE_FORCEH;
+    //reg32(NvRegSlotTime) = ((rand() % 0xFF) & NVREG_SLOTTIME_MASK) | NVREG_SLOTTIME_10_100_FULL;
 
     reg32(NvRegTxDeferral) = NVREG_TX_DEFERRAL_RGMII_10_100;
 	reg32(NvRegRxDeferral) = NVREG_RX_DEFERRAL_DEFAULT;
@@ -317,7 +339,7 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     reg32(NvRegRxRingPhysAddr) = MmGetPhysicalAddress((void *)g_rxDescriptors);
     reg32(NvRegRingSizes) = ((RX_RING_SIZE - 1) << NVREG_RINGSZ_RXSHIFT) | ((TX_RING_SIZE - 1) << NVREG_RINGSZ_TXSHIFT);
 
-    // FIXME ??
+    // FIXME ?? (MS Dash does this and sets up both these registers with 0x300010)
     reg32(NvRegUnknownSetupReg7) = NVREG_UNKSETUP7_VAL1;
     reg32(NvRegTxWatermark) = NVREG_UNKSETUP7_VAL1;
 
@@ -331,8 +353,7 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
         MmFreeContiguousMemory(descriptors);
         MmFreeContiguousMemory(g_rx_buffers);
         assert(0);
-        // FIXME: some kind of error code would be nice
-        return 0;
+        return NVNET_PHY_ERR;
     }
 
     reg32(NvRegAdapterControl) |= NVREG_ADAPTCTL_RUNNING;
@@ -379,16 +400,13 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
         MmFreeContiguousMemory(descriptors);
         MmFreeContiguousMemory(g_rx_buffers);
         assert(0);
-        // FIXME: some kind of error code would be nice
-        return 0;
+        return NVNET_SYS_ERR;
     }
 
     nvnetdrv_irq_enable();
+    nvnetdrv_start_txrx();
 
-    // FIXME:
-    //nvnetdrv_start_txrx();
-
-    return -1;
+    return NVNET_OK;
 }
 
 void nvnetdrv_stop (void)
@@ -435,6 +453,7 @@ void nvnetdrv_start_txrx (void)
 
     reg32(NvRegTransmitterControl) |= NVREG_XMITCTL_START;
     reg32(NvRegReceiverControl) |= NVREG_RCVCTL_START;
+    reg32(NvRegTxRxControl) = NVREG_TXRXCTL_KICK | NVREG_TXRXCTL_GET;
 }
 
 void nvnetdrv_stop_txrx (void)
@@ -491,6 +510,7 @@ int nvnetdrv_acquire_tx_descriptors (size_t count)
                 }
             }
         }
+        return true;
     }
 
     return true;
@@ -516,13 +536,13 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
 
         // Buffers get locked before sending and unlocked after sending
         MmLockUnlockBufferPages(buffers[i].addr, buffers[i].length, FALSE);
-        g_txDescriptors[current_descriptor_index].paddr = MmGetPhysicalAddress(buffers[i].addr);
+        g_txDescriptors[current_descriptor_index].paddr = MmGetPhysicalAddress(buffers[i].addr); //FIXME? Is this contiguous?
         g_txDescriptors[current_descriptor_index].length = buffers[i].length - 1;
         g_txDescriptors[current_descriptor_index].flags = (i != 0 ? NV_TX_VALID : 0);
     }
 
     // Terminate descriptor chain
-    g_txDescriptors[(descriptors_index + count) % TX_RING_SIZE].flags |= NV_TX_LASTPACKET;
+    g_txDescriptors[(descriptors_index + count - 1) % TX_RING_SIZE].flags |= NV_TX_LASTPACKET;
 
     // Enable first descriptor last to keep the NIC from sending incomplete packets
     g_txDescriptors[descriptors_index].flags |= NV_TX_VALID;
@@ -531,4 +551,11 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
     g_txDescriptorsInUseCount += count;
 
     reg32(NvRegTxRxControl) = NVREG_TXRXCTL_KICK;
+}
+
+void nvnetdrv_rx_release(size_t buffer_index)
+{
+    assert(buffer_index < RX_RING_SIZE);
+    g_rxDescriptors[buffer_index].flags = NV_RX_AVAIL;
+    g_rxDescriptors[buffer_index].length = 2048;
 }
