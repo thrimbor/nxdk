@@ -9,8 +9,7 @@ LWIPSRCS := $(COREFILES) \
             $(NETIFFILES)
 
 # Include driver sources
-DRIVERSRCS := $(wildcard $(NXDK_DIR)/lib/net/pktdrv/*.c) \
-              $(wildcard $(NXDK_DIR)/lib/net/nforceif/src/*.c) \
+DRIVERSRCS := $(wildcard $(NXDK_DIR)/lib/net/nforceif/src/*.c) \
               $(NXDK_DIR)/lib/nvnetdrv/nvnetdrv.c
 
 NET_SRCS := \
@@ -21,10 +20,8 @@ NET_OBJS = $(addsuffix .obj, $(basename $(NET_SRCS)))
 
 NXDK_CFLAGS += -I$(LWIPDIR)/include
 NXDK_CFLAGS += -I$(NXDK_DIR)/lib/net/nforceif/include
-NXDK_CFLAGS += -I$(NXDK_DIR)/lib/net/pktdrv
 NXDK_CXXFLAGS += -I$(LWIPDIR)/include
 NXDK_CXXFLAGS += -I$(NXDK_DIR)/lib/net/nforceif/include
-NXDK_CXXFLAGS += -I$(NXDK_DIR)/lib/net/pktdrv
 
 $(NXDK_DIR)/lib/libnxdk_net.lib: $(NET_OBJS)
 
