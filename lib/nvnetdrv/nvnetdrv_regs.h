@@ -60,11 +60,13 @@ enum {
 #define NVREG_RCVSTAT_BUSY 0x01
 
 // FIXME: check if better data available
-    NvRegRandomSeed = 0x09c,
-#define NVREG_RNDSEED_MASK   0x00FF
-#define NVREG_RNDSEED_FORCE  0x7F00
-#define NVREG_RNDSEED_FORCE2 0x2D00
-#define NVREG_RNDSEED_FORCE3 0x7400
+	NvRegSlotTime = 0x9c,
+#define NVREG_SLOTTIME_LEGBF_ENABLED 0x80000000
+#define NVREG_SLOTTIME_10_100_FULL   0x00007f00
+#define NVREG_SLOTTIME_1000_FULL     0x0003ff00
+#define NVREG_SLOTTIME_HALF          0x0000ff00
+#define NVREG_SLOTTIME_DEFAULT       0x00007f00
+#define NVREG_SLOTTIME_MASK          0x000000ff
 
     NvRegTxDeferral = 0x0A0,
 #define NVREG_TX_DEFERRAL_RGMII_10_100 0x16070F
@@ -78,7 +80,9 @@ enum {
 #define NVREG_MCASTADDRA_FORCE 0x01
     NvRegMulticastAddrB = 0x0B4,
     NvRegMulticastMaskA = 0x0B8,
+#define NVREG_MCASTMASKA_NONE 0xffffffff
     NvRegMulticastMaskB = 0x0BC,
+#define NVREG_MCASTMASKB_NONE 0xffff
 
     NvRegPhyInterface = 0x0C0,
 #define PHY_RGMII 0x10000000
@@ -113,7 +117,7 @@ enum {
 
     NvRegTxRxControl = 0x144,
 #define NVREG_TXRXCTL_KICK      0x0001
-#define NVREG_TXRXCTL_BIT1      0x0002
+#define NVREG_TXRXCTL_GET       0x0002 // NOTE: changed it
 #define NVREG_TXRXCTL_DISABLE   0x0004 // NOTE: changed it
 #define NVREG_TXRXCTL_IDLE      0x0008
 #define NVREG_TXRXCTL_RESET     0x0010
