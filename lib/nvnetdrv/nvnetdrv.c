@@ -53,6 +53,7 @@ static uint8_t g_ethAddr[6];
 static uint32_t g_linkSpeed;
 static ULONG g_irq;
 static KIRQL g_irql;
+static KDPC g_dpc_obj;
 static KINTERRUPT g_interrupt;
 static HANDLE g_irq_thread;
 static KEVENT g_irq_event;
@@ -89,9 +90,15 @@ static void nvnetdrv_irq_enable (void)
 static BOOLEAN NTAPI nvnetdrv_isr (PKINTERRUPT Interrupt, PVOID ServiceContext)
 {
     nvnetdrv_irq_disable();
-    KeSetEvent(&g_irq_event, IO_NETWORK_INCREMENT, FALSE);
+    KeInsertQueueDpc(&g_dpc_obj, NULL, NULL);
 
     return TRUE;
+}
+
+static void __stdcall nvnetdrv_dpc (PKDPC Dpc, PVOID DeferredContext, PVOID SystemArgument1, PVOID SystemArgument2)
+{
+    KeSetEvent(&g_irq_event, IO_NETWORK_INCREMENT, FALSE);
+    return;
 }
 
 static uint32_t nvnetdrv_rx_ptov (uint32_t phys_address)
@@ -367,6 +374,8 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
 
     // Create a minimal stack, no TLS thread to handle NIC events
     PsCreateSystemThreadEx(&g_irq_thread, 0, 4096, 0, NULL, NULL, NULL, FALSE, FALSE, nvnetdrv_irq_thread);
+
+    KeInitializeDpc(&g_dpc_obj, nvnetdrv_dpc, NULL);
 
     g_irq = HalGetInterruptVector(4, &g_irql);
 
