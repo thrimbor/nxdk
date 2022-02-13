@@ -4,7 +4,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef void (*nvnetdrv_rx_callback_t)(void *buffer, uint16_t length);
+#ifndef RX_RING_SIZE
+#define RX_RING_SIZE 64
+#endif
+#ifndef TX_RING_SIZE
+#define TX_RING_SIZE 64
+#endif
+
+typedef void (*nvnetdrv_rx_callback_t)(size_t rx_index, void *buffer, uint16_t length);
 typedef void (*tx_callback_t) (void *userdata);
 
 typedef struct _nvnetdrv_descriptor_t
@@ -47,7 +54,7 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
  * Releases an RX buffer given out by nvnetdrv. All RX buffers need to be
  * released eventually, or the NIC will run out of buffers to use.
  */
-void nvnetdrv_release (size_t buffer_index);
+void nvnetdrv_rx_release (size_t buffer_index);
 
 void nvnetdrv_rx_queue_buffer (void *buffer_virt);
 
