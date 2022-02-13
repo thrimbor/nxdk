@@ -23,6 +23,7 @@ struct __attribute__((packed)) descriptor_t
 struct tx_misc_t
 {
     void *bufAddr;
+    size_t length;
     tx_callback_t callback;
     void *userdata;
 };
@@ -184,6 +185,8 @@ static void nvnetdrv_handle_tx_irq (void)
         {
             tx_misc[g_txBeginIndex].callback(tx_misc[g_txBeginIndex].userdata);
         }
+        // Buffers get locked before sending and unlocked after sending
+        MmLockUnlockBufferPages(tx_misc[g_txBeginIndex].bufAddr, tx_misc[g_txBeginIndex].length, TRUE);
 
         freed_descriptors++;
         g_txBeginIndex = (g_txBeginIndex + 1) % TX_RING_SIZE;
@@ -531,6 +534,7 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
         size_t current_descriptor_index = (descriptors_index + i) % TX_RING_SIZE;
 
         tx_misc[current_descriptor_index].bufAddr = buffers[i].addr;
+        tx_misc[current_descriptor_index].length = buffers[i].length;
         tx_misc[current_descriptor_index].userdata = buffers[i].userdata;
         tx_misc[current_descriptor_index].callback = buffers[i].callback;
 
