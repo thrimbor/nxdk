@@ -53,8 +53,6 @@
 #define LINK_SPEED_OF_YOUR_NETIF_IN_BPS 100*1000*1000 /* 100 Mbps */
 #include <xboxkrnl/xboxkrnl.h>
 
-static unsigned int g_rx_buffer_packetsize;
-static unsigned char *g_rx_buffer;
 extern struct netif *g_pnetif;
 
 /**
@@ -68,21 +66,39 @@ struct nforceif {
   /* Add whatever per-interface state that is needed here. */
 };
 
-/* Forward declarations. */
-void nforceif_input(struct netif *netif);
-
-int Pktdrv_Callback(unsigned char *packetaddr, unsigned int size)
+typedef struct
 {
-  g_rx_buffer_packetsize=size;
-  memcpy(g_rx_buffer,packetaddr,g_rx_buffer_packetsize);
-  nforceif_input(g_pnetif);
-  return 1;
+  struct pbuf_custom p;
+  size_t index;
+} rx_pbuf_t;
+
+LWIP_MEMPOOL_DECLARE(RX_POOL, RX_RING_SIZE, sizeof(rx_pbuf_t), "Zero-copy RX PBUF pool");
+
+void rx_pbuf_free_callback(struct pbuf *p)
+{
+  rx_pbuf_t *rx_pbuf = (rx_pbuf_t *)p;
+  nvnetdrv_rx_release(rx_pbuf->index);
+  LWIP_MEMPOOL_FREE(RX_POOL, rx_pbuf);
 }
 
-void rx_callback(void *buffer, uint16_t length)
+void rx_callback(size_t rx_index, void *buffer, uint16_t length)
 {
   // ignore packet, just put back buffer for now
-  nvnetdrv_rx_queue_buffer(buffer);
+  rx_pbuf_t *rx_pbuf = (rx_pbuf_t *)LWIP_MEMPOOL_ALLOC(RX_POOL);
+  rx_pbuf->p.custom_free_function = rx_pbuf_free_callback;
+  rx_pbuf->index = rx_index;
+  struct pbuf *p = pbuf_alloced_custom(PBUF_RAW,
+                                       length + ETH_PAD_SIZE,
+                                       PBUF_REF,
+                                       &rx_pbuf->p,
+                                       buffer - ETH_PAD_SIZE,
+                                       2048 - ETH_PAD_SIZE);
+
+  if (g_pnetif->input(p, g_pnetif) != ERR_OK)
+  {
+    pbuf_free(p);
+    nvnetdrv_rx_release(rx_index);
+  }
 }
 
 /**
@@ -129,20 +145,6 @@ low_level_init(struct netif *netif)
   }
 #endif /* LWIP_IPV6 && LWIP_IPV6_MLD */
 
-  /* Do whatever else is needed to initialize interface. */
-
-  // This is a temporary buffer, independent of hardware; cache is fine
-  g_rx_buffer=(unsigned char *)MmAllocateContiguousMemoryEx(
-      1520,
-      0,    //lowest acceptable
-      0xFFFFFFFF, //highest acceptable
-      0,      //no need to align to specific boundaries multiple
-      PAGE_READWRITE);
-  if (!g_rx_buffer)
-  {
-    debugPrint("Failed to allocate packet buffer!\n");
-    abort();
-  }
 }
 
 /**
@@ -151,7 +153,7 @@ low_level_init(struct netif *netif)
  *
  * @param userdata the pbuf address, supplied by low_level_output
  */
-void free_pbuf_callback(void *userdata)
+void tx_pbuf_free_callback(void *userdata)
 {
   struct pbuf *p = (struct pbuf *)userdata;
   pbuf_free(p);
@@ -202,7 +204,7 @@ low_level_output(struct netif *netif, struct pbuf *p)
   }
 
   descriptors[pbufCount - 1].userdata = (void *)p;
-  descriptors[pbufCount - 1].callback = free_pbuf_callback;
+  descriptors[pbufCount - 1].callback = tx_pbuf_free_callback;
 
 #if ETH_PAD_SIZE
   pbuf_header(p, ETH_PAD_SIZE); /* reclaim the padding word */
@@ -216,122 +218,6 @@ low_level_output(struct netif *netif, struct pbuf *p)
   LINK_STATS_INC(link.xmit);
 
   return ERR_OK;
-}
-
-/**
- * Should allocate a pbuf and transfer the bytes of the incoming
- * packet from the interface into the pbuf.
- *
- * @param netif the lwip network interface structure for this nforceif
- * @return a pbuf filled with the received packet (including MAC header)
- *         NULL on memory error
- */
-static struct pbuf *
-low_level_input(struct netif *netif)
-{
-  struct nforceif *nforceif = netif->state;
-  struct pbuf *p, *q;
-  u16_t len;
-
-  unsigned long buf_pos = 0;
-
-  /* Obtain the size of the packet and put it into the "len"
-     variable. */
-  len = g_rx_buffer_packetsize;
-
-#if ETH_PAD_SIZE
-  len += ETH_PAD_SIZE; /* allow room for Ethernet padding */
-#endif
-
-  /* We allocate a pbuf chain of pbufs from the pool. */
-  p = pbuf_alloc(PBUF_RAW, len, PBUF_POOL);
-
-  if (p != NULL) {
-
-#if ETH_PAD_SIZE
-    pbuf_header(p, -ETH_PAD_SIZE); /* drop the padding word */
-#endif
-
-    /* We iterate over the pbuf chain until we have read the entire
-     * packet into the pbuf. */
-    for (q = p; (q != NULL) && (buf_pos < len); q = q->next) {
-      /* Read enough bytes to fill this pbuf in the chain. The
-       * available data in the pbuf is given by the q->len
-       * variable.
-       * This does not necessarily have to be a memcpy, you can also preallocate
-       * pbufs for a DMA-enabled MAC and after receiving truncate it to the
-       * actually received size. In this case, ensure the tot_len member of the
-       * pbuf is the sum of the chained pbuf len members.
-       */
-      // read data into(q->payload, q->len);
-      memcpy(q->payload, g_rx_buffer+buf_pos, q->len);
-      buf_pos += q->len;
-    }
-
-    // acknowledge that packet has been read();
-
-#if ETH_PAD_SIZE
-    pbuf_header(p, ETH_PAD_SIZE); /* reclaim the padding word */
-#endif
-
-    LINK_STATS_INC(link.recv);
-  } else {
-    // drop packet();
-    LINK_STATS_INC(link.memerr);
-    LINK_STATS_INC(link.drop);
-  }
-
-  return p;
-}
-
-/**
- * This function should be called when a packet is ready to be read
- * from the interface. It uses the function low_level_input() that
- * should handle the actual reception of bytes from the network
- * interface. Then the type of the received packet is determined and
- * the appropriate input function is called.
- *
- * @param netif the lwip network interface structure for this nforceif
- */
- void // FIXME make static
-nforceif_input(struct netif *netif)
-{
-  struct nforceif *nforceif;
-  struct eth_hdr *ethhdr;
-  struct pbuf *p;
-
-  nforceif = netif->state;
-
-  /* move received packet into a new pbuf */
-  p = low_level_input(netif);
-  /* no packet could be read, silently ignore this */
-  if (p == NULL) return;
-  /* points to packet payload, which starts with an Ethernet header */
-  ethhdr = p->payload;
-
-  switch (htons(ethhdr->type)) {
-  /* IP or ARP packet? */
-  case ETHTYPE_IP:
-  case ETHTYPE_IPV6:
-  case ETHTYPE_ARP:
-#if PPPOE_SUPPORT
-  /* PPPoE packet? */
-  case ETHTYPE_PPPOEDISC:
-  case ETHTYPE_PPPOE:
-#endif /* PPPOE_SUPPORT */
-    /* full packet send to tcpip_thread to process */
-    if (netif->input(p, netif)!=ERR_OK)
-     { LWIP_DEBUGF(NETIF_DEBUG, ("nforceif_input: IP input error\n"));
-       pbuf_free(p);
-       p = NULL;
-     }
-    break;
-
-  default:
-    pbuf_free(p);
-    p = NULL;
-    break;
-  }
 }
 
 /**
