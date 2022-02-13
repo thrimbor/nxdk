@@ -298,7 +298,7 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     //_Static_Assert(RX_RING_SIZE <= 1024);
     //_Static_Assert(TX_RING_SIZE <= 1024);
 
-    void *descriptors = MmAllocateContiguousMemoryEx((RX_RING_SIZE + TX_RING_SIZE) * sizeof(struct descriptor_t), 0, 0xFFFFFFFF, 0, PAGE_READWRITE | PAGE_NOCACHE);
+    void *descriptors = MmAllocateContiguousMemoryEx((RX_RING_SIZE + TX_RING_SIZE) * sizeof(struct descriptor_t), 0, 0xFFFFFFFF, 0, PAGE_READWRITE);
     assert(descriptors);
     if (!descriptors) {
         return NVNET_NO_MEM;
