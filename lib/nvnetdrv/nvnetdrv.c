@@ -147,7 +147,6 @@ static void nvnetdrv_handle_rx_irq (void)
 
             if (flags & NV_RX_MISSEDFRAME) {
                 INC_STAT(rx_missedFrameError, 1);
-                if (packet_length > 0) packet_length--;
             }
 
             INC_STAT(rx_receivedPackets, 1);
