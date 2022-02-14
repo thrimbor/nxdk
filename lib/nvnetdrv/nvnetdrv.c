@@ -35,6 +35,15 @@ struct nvnetdrv_stats_t
     uint32_t rx_extraByteErrors;
     uint32_t tx_interrupts;
     uint32_t phy_interrupts;
+    uint32_t rx_receivedPackets;
+    uint32_t rx_framingError;
+    uint32_t rx_overflowError;
+    uint32_t rx_crcError;
+    uint32_t rx_error4;
+    uint32_t rx_error3;
+    uint32_t rx_error2;
+    uint32_t rx_error1;
+    uint32_t rx_missedFrameError;
 };
 static struct nvnetdrv_stats_t nvnetdrv_stats;
 #define INC_STAT(statname, val) do {nvnetdrv_stats.statname += (val);} while(0);
@@ -133,7 +142,12 @@ static void nvnetdrv_handle_rx_irq (void)
 
             if (flags & NV_RX_SUBTRACT1) {
                 INC_STAT(rx_extraByteErrors, 1);
-                packet_length--;
+                if (packet_length > 0) packet_length--;
+            }
+
+            if (flags & NV_RX_MISSEDFRAME) {
+                INC_STAT(rx_missedFrameError, 1);
+                if (packet_length > 0) packet_length--;
             }
 
             INC_STAT(rx_receivedPackets, 1);
@@ -152,7 +166,6 @@ static void nvnetdrv_handle_rx_irq (void)
             if (flags & NV_RX_ERROR3) INC_STAT(rx_error3, 1);
             if (flags & NV_RX_ERROR2) INC_STAT(rx_error2, 1);
             if (flags & NV_RX_ERROR1) INC_STAT(rx_error1, 1);
-            if (flags & NV_RX_MISSEDFRAME) INC_STAT(rx_missedFrameError, 1);
             nvnetdrv_rx_release(g_rxBeginIndex);
         }
 
@@ -174,12 +187,16 @@ static void nvnetdrv_handle_tx_irq (void)
         if (flags & NV_TX_VALID) {
             // We reached a descriptor that wasn't processed by hw yet
             // FIXME: This triggered on hw for me, so there may be a bug somewhere
-            assert(g_txDescriptorsInUseCount == 0);
+            // This may not be a valid assert thinking about it more.
+            // assert(g_txDescriptorsInUseCount == 0);
             break;
         }
-        if (tx_misc[g_txBeginIndex].callback)
-        {
-            tx_misc[g_txBeginIndex].callback(tx_misc[g_txBeginIndex].userdata);
+
+        if (flags & NV_TX_LASTPACKET) {
+            if (tx_misc[g_txBeginIndex].callback)
+            {
+                tx_misc[g_txBeginIndex].callback(tx_misc[g_txBeginIndex].userdata);
+            }
         }
         // Buffers get locked before sending and unlocked after sending
         MmLockUnlockBufferPages(tx_misc[g_txBeginIndex].bufAddr, tx_misc[g_txBeginIndex].length, TRUE);
