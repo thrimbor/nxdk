@@ -78,6 +78,7 @@ static size_t g_txBeginIndex;
 static atomic_size_t g_txEndIndex;
 static atomic_size_t g_txDescriptorsInUseCount;
 static KSEMAPHORE g_freeTxDescriptors;
+static KSEMAPHORE g_queueTxDescriptors;
 struct tx_misc_t tx_misc[TX_RING_SIZE];
 
 static nvnetdrv_rx_callback_t g_rx_callback;
@@ -228,8 +229,9 @@ static void nvnetdrv_handle_tx_irq (void)
         if (flags & NV_TX_VALID) {
             // We reached a descriptor that wasn't processed by hw yet
             // FIXME: This triggered on hw for me, so there may be a bug somewhere
-            // This may not be a valid assert thinking about it more.
-            // assert(g_txDescriptorsInUseCount == 0);
+            // It was because nvnetdrv_submit_tx_descriptors could queue out of order if it was interrupted by lwip thread.
+            // I added a semaphore in nvnetdrv_submit_tx_descriptors. Please check if this is a good way to do this
+            assert(g_txDescriptorsInUseCount == 0);
             break;
         }
 
@@ -413,6 +415,7 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     KeInitializeEvent(&g_irq_event, SynchronizationEvent, FALSE);
 
     KeInitializeSemaphore(&g_freeTxDescriptors, TX_RING_SIZE, TX_RING_SIZE);
+    KeInitializeSemaphore(&g_queueTxDescriptors, 1, 1);
     KeInitializeSemaphore(&g_RxStack, 1, 1);
 
     // Create a minimal stack, no TLS thread to handle NIC events
@@ -592,6 +595,8 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
     // Avoid excessive requests
     assert(count <= 4);
 
+    KeWaitForSingleObject(&g_queueTxDescriptors, Executive, KernelMode, FALSE, NULL);
+
     // We don't check for buffer overrun here, because the Semaphore already protects us
     size_t descriptors_index = g_txEndIndex;
     while (!atomic_compare_exchange_weak(&g_txEndIndex, &descriptors_index, (descriptors_index + count) % TX_RING_SIZE));
@@ -621,6 +626,7 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
     g_txDescriptorsInUseCount += count;
 
     reg32(NvRegTxRxControl) = NVREG_TXRXCTL_KICK;
+    KeReleaseSemaphore(&g_queueTxDescriptors, IO_NETWORK_INCREMENT, 1, NULL);
 }
 
 void nvnetdrv_rx_release(void *buffer_virt)
