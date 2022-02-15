@@ -39,6 +39,7 @@
 #include <hal/debug.h>
 #include <windows.h>
 
+#include <stdio.h>
 #define printf debugPrint
 #define fflush(...) 
 void abort(void);
