@@ -69,7 +69,7 @@ struct nforceif {
 typedef struct
 {
   struct pbuf_custom p;
-  size_t index;
+  void *buff;
 } rx_pbuf_t;
 
 LWIP_MEMPOOL_DECLARE(RX_POOL, RX_RING_SIZE, sizeof(rx_pbuf_t), "Zero-copy RX PBUF pool");
@@ -77,16 +77,15 @@ LWIP_MEMPOOL_DECLARE(RX_POOL, RX_RING_SIZE, sizeof(rx_pbuf_t), "Zero-copy RX PBU
 void rx_pbuf_free_callback(struct pbuf *p)
 {
   rx_pbuf_t *rx_pbuf = (rx_pbuf_t *)p;
-  nvnetdrv_rx_release(rx_pbuf->index);
+  nvnetdrv_rx_release(rx_pbuf->buff);
   LWIP_MEMPOOL_FREE(RX_POOL, rx_pbuf);
 }
 
-void rx_callback(size_t rx_index, void *buffer, uint16_t length)
+void rx_callback(void *buffer, uint16_t length)
 {
-  // ignore packet, just put back buffer for now
   rx_pbuf_t *rx_pbuf = (rx_pbuf_t *)LWIP_MEMPOOL_ALLOC(RX_POOL);
   rx_pbuf->p.custom_free_function = rx_pbuf_free_callback;
-  rx_pbuf->index = rx_index;
+  rx_pbuf->buff = buffer;
   struct pbuf *p = pbuf_alloced_custom(PBUF_RAW,
                                        length + ETH_PAD_SIZE,
                                        PBUF_REF,
@@ -97,7 +96,7 @@ void rx_callback(size_t rx_index, void *buffer, uint16_t length)
   if (g_pnetif->input(p, g_pnetif) != ERR_OK)
   {
     pbuf_free(p);
-    nvnetdrv_rx_release(rx_index);
+    nvnetdrv_rx_release(buffer);
   }
 }
 

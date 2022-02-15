@@ -9,6 +9,7 @@
 #include "nvnetdrv_regs.h"
 #include <assert.h>
 #include <stdatomic.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <xboxkrnl/xboxkrnl.h>
@@ -80,6 +81,27 @@ static KSEMAPHORE g_freeTxDescriptors;
 struct tx_misc_t tx_misc[TX_RING_SIZE];
 
 static nvnetdrv_rx_callback_t g_rx_callback;
+static void **rx_buff_pool;
+static int32_t rx_buff_head;
+static KSEMAPHORE g_RxStack;
+
+static void nvnetdrv_rx_push(void *buffer_virt)
+{
+    //FIXME: Is this mutex neccessary/Seems like there should be a better way to do this anyway.
+    KeWaitForSingleObject(&g_RxStack, Executive, KernelMode, FALSE, NULL);
+    rx_buff_pool[++rx_buff_head] = buffer_virt;
+    KeReleaseSemaphore(&g_RxStack, IO_NETWORK_INCREMENT, 1, NULL);
+}
+
+static void *nvnetdrv_rx_pop(void)
+{
+    //FIXME: Is this mutex neccessary/Seems like there should be a better way to do this anyway.
+    void *pop;
+    KeWaitForSingleObject(&g_RxStack, Executive, KernelMode, FALSE, NULL);
+    pop = (rx_buff_head < 0) ? NULL : rx_buff_pool[rx_buff_head--];
+    KeReleaseSemaphore(&g_RxStack, IO_NETWORK_INCREMENT, 1, NULL);
+    return pop;
+}
 
 const uint8_t *nvnetdrv_get_ethernet_addr()
 {
@@ -120,6 +142,19 @@ static uint32_t nvnetdrv_rx_vtop (uint32_t virt_address)
     return virt_address - g_rxBufferVirtMinusPhys;
 }
 
+static void nvnetdrv_rx_requeue(size_t buffer_index, void *buffer_virt)
+{
+    assert(buffer_index < RX_RING_SIZE);
+    if (buffer_virt == NULL)
+    {
+        g_rxDescriptors[buffer_index].paddr = 0;
+        return;
+    }
+    g_rxDescriptors[buffer_index].paddr = nvnetdrv_rx_vtop((uint32_t)buffer_virt);
+    g_rxDescriptors[buffer_index].length = 2048;
+    g_rxDescriptors[buffer_index].flags = NV_RX_AVAIL;
+}
+
 static void nvnetdrv_handle_rx_irq (void)
 {
     uint32_t work_left = RX_RING_SIZE;
@@ -133,7 +168,7 @@ static void nvnetdrv_handle_rx_irq (void)
 
         if ((flags & NV_RX_DESCRIPTORVALID) == 0) {
             // Re-queue the buffer
-            nvnetdrv_rx_release(g_rxBeginIndex);
+            nvnetdrv_rx_requeue(g_rxBeginIndex, (void *)nvnetdrv_rx_ptov(g_rxDescriptors[g_rxBeginIndex].paddr));
             goto next_packet;
         }
 
@@ -155,7 +190,9 @@ static void nvnetdrv_handle_rx_irq (void)
             // Hand off the packet to the network stack
             // FIXME: We need to hand out the index, too! - I don't think we really do
             assert(g_rx_callback);
-            g_rx_callback(g_rxBeginIndex, (void *)buffer_virt, packet_length);
+            g_rx_callback((void *)buffer_virt, packet_length);
+            //Attempt to get a new rx buffer and then request this ring descriptor.
+            nvnetdrv_rx_requeue(g_rxBeginIndex, nvnetdrv_rx_pop());
             goto next_packet;
         } else {
             if (flags & NV_RX_FRAMINGERR) INC_STAT(rx_framingError, 1);
@@ -165,11 +202,16 @@ static void nvnetdrv_handle_rx_irq (void)
             if (flags & NV_RX_ERROR3) INC_STAT(rx_error3, 1);
             if (flags & NV_RX_ERROR2) INC_STAT(rx_error2, 1);
             if (flags & NV_RX_ERROR1) INC_STAT(rx_error1, 1);
-            nvnetdrv_rx_release(g_rxBeginIndex);
+            nvnetdrv_rx_requeue(g_rxBeginIndex, (void *)nvnetdrv_rx_ptov(g_rxDescriptors[g_rxBeginIndex].paddr));
         }
 
 next_packet:
         g_rxBeginIndex = (g_rxBeginIndex + 1) % RX_RING_SIZE;
+        //If the next ring descriptor does not have a buffer, assign one and requeue it.
+        if (g_rxDescriptors[g_rxBeginIndex].paddr == 0)
+        {
+            nvnetdrv_rx_requeue(g_rxBeginIndex, nvnetdrv_rx_pop());
+        }
         work_left--;
     }
 
@@ -291,6 +333,7 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     assert(!g_running);
 
     assert(rx_callback);
+
     g_rx_callback = rx_callback;
 
     ULONG type;
@@ -325,13 +368,6 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     }
 
     g_rxBufferVirtMinusPhys = ((uint32_t)g_rx_buffers) - (uint32_t)MmGetPhysicalAddress(g_rx_buffers);
-
-    //Setup the RX ring descriptors
-    for (int i = 0; i < RX_RING_SIZE; i++)
-    {
-        g_rxDescriptors[i].paddr = MmGetPhysicalAddress(g_rx_buffers + (i * 2048));
-        nvnetdrv_rx_release(i);
-    }
 
     //Mac is NOT reversed
     reg32(NvRegMacAddrA) = (g_ethAddr[0] << 0) | (g_ethAddr[1] << 8) | (g_ethAddr[2] << 16) | (g_ethAddr[3] << 24);
@@ -377,6 +413,7 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     KeInitializeEvent(&g_irq_event, SynchronizationEvent, FALSE);
 
     KeInitializeSemaphore(&g_freeTxDescriptors, TX_RING_SIZE, TX_RING_SIZE);
+    KeInitializeSemaphore(&g_RxStack, 1, 1);
 
     // Create a minimal stack, no TLS thread to handle NIC events
     PsCreateSystemThreadEx(&g_irq_thread, 0, 4096, 0, NULL, NULL, NULL, FALSE, FALSE, nvnetdrv_irq_thread);
@@ -399,7 +436,21 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     reg32(NvRegMIIStatus) = reg32(NvRegMIIStatus);
     reg32(NvRegIrqStatus) = reg32(NvRegIrqStatus);
 
-    // NOTE: We haven't queued any buffers yet
+    //Create a push/pop stack of all our RX buffers. This allows a RX buffer to be sent to the user and another
+    //spare buffer to take its place to keep network flowing.
+    rx_buff_pool = (void **)malloc(g_rx_buffer_count * sizeof(void *));
+    RtlZeroMemory(rx_buff_pool, g_rx_buffer_count * sizeof(void *));
+    rx_buff_head = -1;
+    for (uint32_t i = 0; i < g_rx_buffer_count; i++)
+    {
+        nvnetdrv_rx_push(g_rx_buffers + (i * 2048));
+    }
+
+    //Fill our ring descriptor
+    for (uint32_t i = 0; i < ((rx_buffer_count < RX_RING_SIZE) ? rx_buffer_count : RX_RING_SIZE); i++)
+    {
+        nvnetdrv_rx_requeue(i, nvnetdrv_rx_pop());
+    }
 
     // This needs to happen before we connect the irq - otherwise an early irq could make the irq thread terminate
     bool prev_value = atomic_exchange(&g_running, true);
@@ -572,9 +623,7 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
     reg32(NvRegTxRxControl) = NVREG_TXRXCTL_KICK;
 }
 
-void nvnetdrv_rx_release(size_t buffer_index)
+void nvnetdrv_rx_release(void *buffer_virt)
 {
-    assert(buffer_index < RX_RING_SIZE);
-    g_rxDescriptors[buffer_index].flags = NV_RX_AVAIL;
-    g_rxDescriptors[buffer_index].length = 2048;
+    nvnetdrv_rx_push(buffer_virt);
 }

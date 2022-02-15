@@ -11,7 +11,7 @@
 #define TX_RING_SIZE 64
 #endif
 
-typedef void (*nvnetdrv_rx_callback_t)(size_t rx_index, void *buffer, uint16_t length);
+typedef void (*nvnetdrv_rx_callback_t)(void *buffer, uint16_t length);
 typedef void (*tx_callback_t) (void *userdata);
 
 typedef struct _nvnetdrv_descriptor_t
@@ -53,9 +53,8 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
 /**
  * Releases an RX buffer given out by nvnetdrv. All RX buffers need to be
  * released eventually, or the NIC will run out of buffers to use.
+ * @param buffer_virt Pointer to the buffer given out by nvnetdrv.
  */
-void nvnetdrv_rx_release (size_t buffer_index);
-
-//void nvnetdrv_input (void *buffer, uint16_t length);
+void nvnetdrv_rx_release(void *buffer_virt);
 
 #endif
