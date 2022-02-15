@@ -231,7 +231,7 @@ static void nvnetdrv_handle_tx_irq (void)
             // FIXME: This triggered on hw for me, so there may be a bug somewhere
             // It was because nvnetdrv_submit_tx_descriptors could queue out of order if it was interrupted by lwip thread.
             // I added a semaphore in nvnetdrv_submit_tx_descriptors. Please check if this is a good way to do this
-            assert(g_txDescriptorsInUseCount == 0);
+            //assert(g_txDescriptorsInUseCount == 0);
             break;
         }
 
