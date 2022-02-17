@@ -1,8 +1,8 @@
 // TODO:
-// - tell number of rx buffers on init
-// - init reserves and queues buffers
-// - IRQ handler hands of buffer index to callback
-// - callback (or other thread, make threadsafe) can then free index to requeue
+// - tell number of rx buffers on init - DONE
+// - init reserves and queues buffers - DONE
+// - IRQ handler hands of buffer index to callback - NOT NECCESSARY
+// - callback (or other thread, make threadsafe) can then free index to requeue - DONE (rx_irq and nvnetdrv_rx_release handle this)
 //    ^ doesn't need to be IRQ-safe afaik
 
 #include "nvnetdrv.h"
@@ -74,7 +74,6 @@ static volatile struct descriptor_t *g_txDescriptors;
 static uint8_t *g_rx_buffers;
 static size_t g_rx_buffer_count;
 static size_t g_rxBeginIndex;
-static size_t g_rxEndIndex;
 static uint32_t g_rxBufferVirtMinusPhys;
 static size_t g_txBeginIndex;
 static atomic_size_t g_txEndIndex;
@@ -327,6 +326,18 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
 
     g_rx_callback = rx_callback;
 
+    //Ensure NIC is in a known state and previous allocations are cleared
+    reg32(NvRegTxRxControl) = NVREG_TXRXCTL_RESET;
+    LARGE_INTEGER duration;
+    duration.QuadPart = -10;
+    KeDelayExecutionThread(UserMode, FALSE, &duration);
+    reg32(NvRegTxRxControl) = NVREG_TXRXCTL_DISABLE;
+    g_rxBeginIndex = 0;
+    g_txBeginIndex = 0;
+    g_txEndIndex = 0;
+    g_txDescriptorsInUseCount = 0;
+    RtlZeroMemory(tx_misc, sizeof(tx_misc));
+
     ULONG type;
     NTSTATUS status = ExQueryNonVolatileSetting(XC_FACTORY_ETHERNET_ADDR, &type, &g_ethAddr, 6, NULL);
     assert(status == STATUS_SUCCESS);
@@ -337,7 +348,8 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     //_Static_Assert(RX_RING_SIZE <= 1024);
     //_Static_Assert(TX_RING_SIZE <= 1024);
 
-    void *descriptors = MmAllocateContiguousMemoryEx((RX_RING_SIZE + TX_RING_SIZE) * sizeof(struct descriptor_t), 0, 0xFFFFFFFF, 0, PAGE_READWRITE);
+    void *descriptors = MmAllocateContiguousMemoryEx((RX_RING_SIZE + TX_RING_SIZE) * sizeof(struct descriptor_t),
+                                                     0, 0xFFFFFFFF, 0, PAGE_READWRITE);
     assert(descriptors);
     if (!descriptors) {
         return NVNET_NO_MEM;
@@ -352,7 +364,7 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     assert(rx_buffer_count > 1);
     g_rx_buffer_count = rx_buffer_count;
 
-    g_rx_buffers = MmAllocateContiguousMemoryEx(rx_buffer_count * 2048, 0, 0xFFFFFFFF, 0, PAGE_READWRITE);
+    g_rx_buffers = MmAllocateContiguousMemoryEx(g_rx_buffer_count * 2048, 0, 0xFFFFFFFF, 0, PAGE_READWRITE);
     assert(g_rx_buffers);
     if (!g_rx_buffers) {
         MmFreeContiguousMemory(descriptors);
@@ -381,7 +393,8 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     // Configure descriptor ring buffers. The size-1 thing is a hw quirk.
     reg32(NvRegTxRingPhysAddr) = MmGetPhysicalAddress((void *)g_txDescriptors);
     reg32(NvRegRxRingPhysAddr) = MmGetPhysicalAddress((void *)g_rxDescriptors);
-    reg32(NvRegRingSizes) = ((RX_RING_SIZE - 1) << NVREG_RINGSZ_RXSHIFT) | ((TX_RING_SIZE - 1) << NVREG_RINGSZ_TXSHIFT);
+    reg32(NvRegRingSizes) = ((RX_RING_SIZE - 1) << NVREG_RINGSZ_RXSHIFT) |
+                            ((TX_RING_SIZE - 1) << NVREG_RINGSZ_TXSHIFT);
 
     // FIXME ?? (MS Dash does this and sets up both these registers with 0x300010)
     reg32(NvRegUnknownSetupReg7) = NVREG_UNKSETUP7_VAL1;
@@ -461,6 +474,7 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
 
         MmFreeContiguousMemory(descriptors);
         MmFreeContiguousMemory(g_rx_buffers);
+        free(rx_buff_pool);
         assert(0);
         return NVNET_SYS_ERR;
     }
@@ -497,7 +511,15 @@ void nvnetdrv_stop (void)
     NtWaitForSingleObject(g_irq_thread, FALSE, NULL);
     NtClose(g_irq_thread);
 
-    // FIXME: There's more to clean up here, like TX buffers we still control etc.
+    // Pass back all TX buffers
+    for (int i = 0; i < TX_RING_SIZE; i++)
+    {
+        if (tx_misc[g_txBeginIndex].callback)
+        {
+            tx_misc[g_txBeginIndex].callback(tx_misc[g_txBeginIndex].userdata);
+            KeReleaseSemaphore(&g_freeTxDescriptors, IO_NETWORK_INCREMENT, i + 1, NULL);
+        }
+    }
 
     // Reset TX & RX control
     reg32(NvRegTxRxControl) = NVREG_TXRXCTL_DISABLE | NVREG_TXRXCTL_RESET;
@@ -507,6 +529,7 @@ void nvnetdrv_stop (void)
 
     MmFreeContiguousMemory((void *)g_rxDescriptors);
     MmFreeContiguousMemory((void *)g_rx_buffers);
+    free(rx_buff_pool);
 }
 
 void nvnetdrv_start_txrx (void)
@@ -621,6 +644,8 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
 
 void nvnetdrv_rx_release(void *buffer_virt)
 {
+    if (!g_running) return; //Network stack might call this after we have shutdown. Just leave.
+
     assert(buffer_virt != NULL);
 
     KeWaitForSingleObject(&g_RxRequeueMutex, Executive, KernelMode, FALSE, NULL);

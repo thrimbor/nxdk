@@ -168,6 +168,16 @@ enum {
 
     NvRegPatternCRC = 0x204,
     NvRegPatternMask = 0x208,
+
+    //Additional NVRegs obtained from monitoring Xbox HW:
+    NvRegTxCount        = 0x114, //Counts up with transmits?
+    NvRegRxCount        = 0x118, //Counts up with receives
+    NvRegCurrentTxRdesc = 0x11C, //Pointer to the current TX ring descriptor (struct descriptor_t)
+    NvRegCurrentRxRdesc = 0x120, //Pointer to the current RX ring descriptor (struct descriptor_t)
+    NvRegCurrentTxBuff  = 0x124, //Pointer to the current TX data buffer.
+    NvRegCurrentRxBuff  = 0x12C, //Pointer to the current RX data buffer.
+    NvRegNextTxRdesc    = 0x134, //Pointer to the next TX ring descriptor (struct descriptor_t)
+    NvRegNextRxRdesc    = 0x138, //Pointer to the next RX ring descriptor (struct descriptor_t)
 };
 
 #define NV_TX_LASTPACKET       (1 <<  0)
