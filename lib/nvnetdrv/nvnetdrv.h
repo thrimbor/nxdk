@@ -11,6 +11,13 @@
 #define TX_RING_SIZE 64
 #endif
 
+//NVNET error codes
+#define NVNET_OK 0
+#define NVNET_NO_MEM -1
+#define NVNET_NO_MAC -2
+#define NVNET_PHY_ERR -3
+#define NVNET_SYS_ERR -4
+
 typedef void (*nvnetdrv_rx_callback_t)(void *buffer, uint16_t length);
 typedef void (*tx_callback_t) (void *userdata);
 
@@ -34,7 +41,7 @@ const uint8_t *nvnetdrv_get_ethernet_addr();
 
 /**
  * Reserves 1-4 descriptors. If the requested number is not immediately available,
- * this function will block until the request can be satisfied.
+ * this function will block until the request can be satisfied. This should be called prior to nvnetdrv_submit_tx_descriptors
  * This function is thread-safe.
  * @param count The number of descriptors to reserve
  * @return Zero if the reservation failed, non-zero if it succeeded.
@@ -43,7 +50,7 @@ int nvnetdrv_acquire_tx_descriptors (size_t count);
 
 /**
  * Queues a packet, which consists of 1-4 buffers, for sending. The descriptors for this
- * need to be allocated beforehand.
+ * need to be allocated beforehand using nvnetdrv_acquire_tx_descriptors()/
  * This function is thread-safe.
  * @param buffers Pointer to an array of buffers which will be queued for sending as a packet
  * @param count The number of buffers to queue
