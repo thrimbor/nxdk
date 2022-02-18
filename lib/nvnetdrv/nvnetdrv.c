@@ -79,9 +79,8 @@ static size_t g_txBeginIndex;
 static atomic_size_t g_txEndIndex;
 static atomic_size_t g_txDescriptorsInUseCount;
 static KSEMAPHORE g_freeTxDescriptors;
-static KSEMAPHORE g_queueTxDescriptors;
+static KMUTANT g_queueTxDescriptorsMutex;
 struct tx_misc_t tx_misc[TX_RING_SIZE];
-
 static nvnetdrv_rx_callback_t g_rx_callback;
 static size_t g_rxEmptyQueueIndex;
 static KMUTANT g_RxRequeueMutex;
@@ -417,7 +416,7 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     KeInitializeEvent(&g_irq_event, SynchronizationEvent, FALSE);
 
     KeInitializeSemaphore(&g_freeTxDescriptors, TX_RING_SIZE, TX_RING_SIZE);
-    KeInitializeSemaphore(&g_queueTxDescriptors, 1, 1);
+    KeInitializeMutant(&g_queueTxDescriptorsMutex, FALSE);
     KeInitializeMutant(&g_RxPoolMutex, FALSE);
     KeInitializeMutant(&g_RxRequeueMutex, FALSE);
 
@@ -608,7 +607,8 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
     // Avoid excessive requests
     assert(count <= 4);
 
-    KeWaitForSingleObject(&g_queueTxDescriptors, Executive, KernelMode, FALSE, NULL);
+    //Mutex to ensure these get added in order incase network stack interrupts us
+    KeWaitForSingleObject(&g_queueTxDescriptorsMutex, Executive, KernelMode, FALSE, NULL);
 
     // We don't check for buffer overrun here, because the Semaphore already protects us
     size_t descriptors_index = g_txEndIndex;
@@ -639,7 +639,7 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
     atomic_fetch_add(&g_txDescriptorsInUseCount, count);
 
     reg32(NvRegTxRxControl) = NVREG_TXRXCTL_KICK;
-    KeReleaseSemaphore(&g_queueTxDescriptors, IO_NETWORK_INCREMENT, 1, NULL);
+    KeReleaseMutant(&g_queueTxDescriptorsMutex, IO_NETWORK_INCREMENT, FALSE, FALSE);
 }
 
 void nvnetdrv_rx_release(void *buffer_virt)
