@@ -204,11 +204,12 @@ typedef struct
     struct pbuf_custom p;
 } rx_pbuf_t;
 
-LWIP_MEMPOOL_DECLARE(RX_POOL, 1, sizeof(rx_pbuf_t), "Zero-copy RX PBUF pool");
+LWIP_MEMPOOL_DECLARE(RX_POOL, 32, sizeof(rx_pbuf_t), "Zero-copy RX PBUF pool");
 
 void rx_pbuf_free_custom(struct pbuf *p)
 {
     rx_pbuf_t *prealloced_pbuf = (rx_pbuf_t *)p;
+    DbgPrint("freeing %x\n", p->payload);
     LWIP_MEMPOOL_FREE(RX_POOL, prealloced_pbuf);
 }
 
@@ -226,6 +227,7 @@ low_level_input(struct netif *netif, unsigned char *packetaddr, unsigned int siz
     struct nforceif *nforceif = netif->state;
 
     rx_pbuf_t *prealloced_pbuf = (rx_pbuf_t *)LWIP_MEMPOOL_ALLOC(RX_POOL);
+    assert(prealloced_pbuf);
     prealloced_pbuf->p.custom_free_function = rx_pbuf_free_custom;
 
     struct pbuf *p = pbuf_alloced_custom(PBUF_RAW,
@@ -235,9 +237,20 @@ low_level_input(struct netif *netif, unsigned char *packetaddr, unsigned int siz
         packetaddr,
         size);
 
+    DbgPrint("allocing %x\n", p->payload);
+
     if (p != NULL) {
         // acknowledge that packet has been read
+        //p = pbuf_take(p);
+        /*
+        struct pbuf *np;
+        np = pbuf_clone(PBUF_RAW, PBUF_RAM, p);
+        assert(np != NULL);
+        pbuf_free(p);
+        p = np;
+        */
         LINK_STATS_INC(link.recv);
+        //DbgPrint("alloc\n");
     } else {
         // drop packet
         LINK_STATS_INC(link.memerr);

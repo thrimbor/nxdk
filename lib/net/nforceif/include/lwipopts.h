@@ -83,7 +83,7 @@
  * ATTENTION: this does not work when tcpip_input() is called from
  * interrupt context!
  */
-#define LWIP_TCPIP_CORE_LOCKING_INPUT   1
+#define LWIP_TCPIP_CORE_LOCKING_INPUT   0
 
 /**
  * SYS_LIGHTWEIGHT_PROT==1: enable inter-task protection (and task-vs-interrupt
@@ -93,6 +93,8 @@
  * you disable this, you must be sure what you are doing!
  */
 #define SYS_LIGHTWEIGHT_PROT            1
+
+#define LWIP_ALLOW_MEM_FREE_FROM_OTHER_CONTEXT 1
 
 /*
    ------------------------------------
