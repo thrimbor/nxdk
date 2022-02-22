@@ -660,6 +660,7 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
     size_t descriptors_index = g_txEndIndex;
     while (!atomic_compare_exchange_weak(&g_txEndIndex, &descriptors_index, (descriptors_index + count) % TX_RING_SIZE));
 
+    //FIXME: If TX buffer physical address crosses page boundaries we need to split it across two descriptors 
     for (size_t i = 0; i < count; i++) {
         size_t current_descriptor_index = (descriptors_index + i) % TX_RING_SIZE;
 
