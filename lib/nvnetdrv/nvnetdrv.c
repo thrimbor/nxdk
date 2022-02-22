@@ -652,6 +652,11 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
     assert(count > 0);
     // Avoid excessive requests
     assert(count <= 4);
+    // Check that no buffer crosses a page boundary
+    for (size_t i = 0; i < count; i++) {
+        // For 4KiB pages, the least significant 12 bits are intra-page offsets, so shift them away and compare the rest
+        assert(((uint32_t)buffers[i].addr >> 12) == (((uint32_t)buffers[i].addr + buffers[i].length-1) >> 12));
+    }
 
     //Mutex to ensure these get added in order incase network stack interrupts us
     KeWaitForSingleObject(&g_TxQueueMutex, Executive, KernelMode, FALSE, NULL);
@@ -660,7 +665,6 @@ void nvnetdrv_submit_tx_descriptors (nvnetdrv_descriptor_t *buffers, size_t coun
     size_t descriptors_index = g_txEndIndex;
     while (!atomic_compare_exchange_weak(&g_txEndIndex, &descriptors_index, (descriptors_index + count) % TX_RING_SIZE));
 
-    //FIXME: If TX buffer physical address crosses page boundaries we need to split it across two descriptors 
     for (size_t i = 0; i < count; i++) {
         size_t current_descriptor_index = (descriptors_index + i) % TX_RING_SIZE;
 
