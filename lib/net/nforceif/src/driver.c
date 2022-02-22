@@ -32,6 +32,8 @@
  * Xbox Support: Matt Borgerson
  *
  */
+#include <assert.h>
+
 #include "lwip/opt.h"
 #include "lwip/def.h"
 #include "lwip/mem.h"
@@ -179,31 +181,53 @@ low_level_output(struct netif *netif, struct pbuf *p)
 {
   struct nforceif *nforceif = netif->state;
 
-  size_t pbufCount = 0;
-  for (struct pbuf *q = p; q != NULL; q = q->next) {
-    pbufCount++;
-  }
-
-  int r = nvnetdrv_acquire_tx_descriptors(pbufCount);
-  if (!r) {
-    return ERR_MEM;
-  }
-
 #if ETH_PAD_SIZE
   pbuf_header(p, -ETH_PAD_SIZE); /* drop the padding word */
 #endif
 
   nvnetdrv_descriptor_t descriptors[4];
-  size_t i = 0;
+  size_t pbufCount = 0;
   for (struct pbuf *q = p; q != NULL; q = q->next) {
-    descriptors[i].addr  = q->payload;
-    descriptors[i].length = q->len;
-    descriptors[i].callback = NULL;
-    i++;
+    assert(p->len < 4096);
+    descriptors[pbufCount].addr = q->payload;
+    descriptors[pbufCount].length = q->len;
+    descriptors[pbufCount].callback = NULL;
+
+    pbufCount++;
+    if (pbufCount > 4) return ERR_MEM;
+
+    const uint32_t addr_start = (uint32_t)q->payload;
+    const uint32_t addr_end = ((uint32_t)q->payload + q->len);
+    if (addr_start >> 12 != addr_end >> 12) {
+      // Buffer crosses a page boundary
+      const uint32_t addr_boundary = (addr_end & 0xFFFFF000);
+      const uint32_t length_a = addr_boundary - addr_start;
+      const uint32_t length_b = addr_end - addr_boundary;
+
+      // Buffer ends right at page boundary, so no problem
+      if (length_b == 0) continue;
+
+      // Fixup the descriptor
+      descriptors[pbufCount-1].length = length_a;
+
+      // Queue another descriptor for the remainder
+      descriptors[pbufCount].addr = (void *)addr_boundary;
+      descriptors[pbufCount].length = length_b;
+      descriptors[pbufCount].callback = NULL;
+
+      pbufCount++;
+      if (pbufCount > 4) return ERR_MEM;
+    }
   }
 
+  // Last descriptor gets the callback to free the pbufs
   descriptors[pbufCount - 1].userdata = (void *)p;
   descriptors[pbufCount - 1].callback = tx_pbuf_free_callback;
+
+  int r = nvnetdrv_acquire_tx_descriptors(pbufCount);
+  if (!r) {
+    return ERR_MEM;
+  }
 
 #if ETH_PAD_SIZE
   pbuf_header(p, ETH_PAD_SIZE); /* reclaim the padding word */
