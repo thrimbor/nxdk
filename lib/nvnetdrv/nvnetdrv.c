@@ -91,14 +91,12 @@ static size_t g_rxEmptyQueueIndex;
 static void **rx_buff_pool;
 static int32_t rx_buff_head;
 static LARGE_INTEGER onesecond = {.QuadPart = -10000000};
+static LARGE_INTEGER tenmicros = {.QuadPart = -100};
 
 static void nvnetdrv_rx_push(void *buffer_virt)
 {
     assert(buffer_virt != NULL);
-    NTSTATUS status = KeWaitForSingleObject(&g_RxPoolMutex, Executive, KernelMode, FALSE, &onesecond);
-    if (!NT_SUCCESS(status)) {
-        assert(0);
-    }
+    KeWaitForSingleObject(&g_RxPoolMutex, Executive, KernelMode, FALSE, NULL);
     rx_buff_pool[++rx_buff_head] = buffer_virt;
     KeReleaseMutant(&g_RxPoolMutex, IO_NETWORK_INCREMENT, FALSE, FALSE);
     KeReleaseSemaphore(&g_freeRxBuffers, IO_NETWORK_INCREMENT, 1, FALSE);
@@ -110,14 +108,9 @@ static void *nvnetdrv_rx_pop(void)
     NTSTATUS status;
     status = KeWaitForSingleObject(&g_freeRxBuffers, Executive, KernelMode, FALSE, &onesecond);
     if (!NT_SUCCESS(status)) {
-        assert(0);
         return NULL;
     }
-    status = KeWaitForSingleObject(&g_RxPoolMutex, Executive, KernelMode, FALSE, &onesecond);
-    if (!NT_SUCCESS(status)) {
-        assert(0);
-        return NULL;
-    }
+    KeWaitForSingleObject(&g_RxPoolMutex, Executive, KernelMode, FALSE, NULL);
     pop = (rx_buff_head < 0) ? NULL : rx_buff_pool[rx_buff_head--];
     KeReleaseMutant(&g_RxPoolMutex, IO_NETWORK_INCREMENT, FALSE, FALSE);
     return pop;
@@ -228,7 +221,7 @@ release_packet:
         nvnetdrv_rx_release((void *)nvnetdrv_rx_ptov(g_rxDescriptors[g_rxBeginIndex].paddr));
         //Fallthrough
 next_packet:
-        g_rxDescriptors[g_rxBeginIndex].paddr = 0;
+        g_rxDescriptors[g_rxBeginIndex].paddr = 0; //Mark is as empty so we know to requeue it later
         KeReleaseSemaphore(&g_freeRxDescriptors, IO_NETWORK_INCREMENT, 1, FALSE);
         g_rxBeginIndex = (g_rxBeginIndex + 1) % RX_RING_SIZE;
     }
@@ -359,15 +352,24 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     g_rx_callback = rx_callback;
 
     //Ensure NIC is in a known state and previous allocations are cleared
+    nvnetdrv_stop_txrx();
     reg32(NvRegTxRxControl) = NVREG_TXRXCTL_RESET;
-    LARGE_INTEGER duration;
-    duration.QuadPart = -10;
-    KeDelayExecutionThread(UserMode, FALSE, &duration);
-    reg32(NvRegTxRxControl) = NVREG_TXRXCTL_DISABLE;
+    KeDelayExecutionThread(UserMode, FALSE, &tenmicros);
+    reg32(NvRegTxRxControl) = 0;
+    KeDelayExecutionThread(UserMode, FALSE, &tenmicros);
     g_rxBeginIndex = 0;
     g_txBeginIndex = 0;
     g_txEndIndex = 0;
     g_txDescriptorsInUseCount = 0;
+    //Ensure interrupts are disabled
+    reg32(NvRegIrqMask) = 0;
+    reg32(NvRegMIIMask) = 0;
+    //Acknowledge any interrupts/Status bits
+    reg32(NvRegTransmitterStatus) = reg32(NvRegTransmitterStatus);
+    reg32(NvRegReceiverStatus) = reg32(NvRegReceiverStatus);
+    reg32(NvRegMIIStatus) = reg32(NvRegMIIStatus);
+    reg32(NvRegIrqStatus) = reg32(NvRegIrqStatus);
+
     RtlZeroMemory(tx_misc, sizeof(tx_misc));
 
     ULONG type;
@@ -467,15 +469,6 @@ int nvnetdrv_init (size_t rx_buffer_count, nvnetdrv_rx_callback_t rx_callback)
     // Get speed settings from Phy
     nvnetdrv_handle_mii_irq(0, true);
 
-     // FIXME: Should we reset here?
-
-    // FIXME: Start recv/send here
-    //nvnetdrv_start_txrx();
-
-    // FIXME: Necessary? Maybe do it earlier?
-    reg32(NvRegMIIStatus) = reg32(NvRegMIIStatus);
-    reg32(NvRegIrqStatus) = reg32(NvRegIrqStatus);
-
     //Create a push/pop stack of all our RX buffers. This allows a RX buffer to be sent to the user and another
     //spare buffer to take its place to keep network flowing.
     rx_buff_pool = (void **)malloc(g_rx_buffer_count * sizeof(void *));
@@ -549,13 +542,27 @@ void nvnetdrv_stop (void)
     NtWaitForSingleObject(g_irq_thread, FALSE, NULL);
     NtClose(g_irq_thread);
 
+    //Stop RX buffer requeue thread
+    NtWaitForSingleObject(g_rxr_thread, FALSE, NULL);
+    NtClose(g_rxr_thread);
+
+    NTSTATUS status;
     // Pass back all TX buffers
     for (int i = 0; i < TX_RING_SIZE; i++)
     {
         if (tx_misc[g_txBeginIndex].callback)
         {
             tx_misc[g_txBeginIndex].callback(tx_misc[g_txBeginIndex].userdata);
-            KeReleaseSemaphore(&g_freeTxDescriptors, IO_NETWORK_INCREMENT, i + 1, NULL);
+            status = KeReleaseSemaphore(&g_freeTxDescriptors, IO_NETWORK_INCREMENT, 1, NULL);
+        }
+    }
+
+    for (int i = 0; i < RX_RING_SIZE; i++)
+    {
+        status = KeReleaseSemaphore(&g_freeRxDescriptors, IO_NETWORK_INCREMENT, 1, NULL);
+        if (!NT_SUCCESS(status))
+        {
+            break;
         }
     }
 
@@ -688,3 +695,56 @@ void nvnetdrv_rx_release(void *buffer_virt)
     assert(buffer_virt != NULL);
     nvnetdrv_rx_push(buffer_virt);
 }
+
+#if (0)
+//Just my debugging stuff
+#include <hal/debug.h>
+void nvnet_debug()
+{
+    //Recommend 1280x720 res to print this
+    debugResetCursor();
+#if (0)
+    debugPrint("\nNIC regs:\n");
+    for (int i = 0; i < 0x200; i+=4)
+    {
+        debugPrint("%03d: %08x ",i,reg32(i));
+    }
+#endif
+
+    debugPrint("IRQ Mask: %08x Status: %08x MII status: %08x Tx in use %d\n",
+               reg32(NvRegIrqMask),
+               reg32(NvRegIrqStatus),
+               reg32(NvRegMIIStatus),
+               g_txDescriptorsInUseCount);
+    debugPrint("Current TX: %d == %d - end: %d     \n",
+               g_txBeginIndex,                                                                                           // What TX descriptor nvnet thinks it's on
+               (reg32(NvRegCurrentTxRdesc) - nvnetdrv_rx_vtop((uint32_t)g_txDescriptors)) / sizeof(struct descriptor_t), // What TX descriptor the NIC thinks it's on
+               g_txEndIndex);                                                                                            // The position of the last queued TX descriptor
+    debugPrint("Current RX: %d == %d - end: %d     \n",
+               g_rxBeginIndex,                                                                                           // What RX descriptor nvnet thinks it's on
+               (reg32(NvRegCurrentRxRdesc) - nvnetdrv_rx_vtop((uint32_t)g_rxDescriptors)) / sizeof(struct descriptor_t), // What RX descriptor the NIC thinks it's on
+               g_rxEndIndex);                                                                                            // The position of the last queued RX descriptor
+    debugPrint("Current TX Buff: %08x\n", reg32(NvRegCurrentTxBuff));                                                    // The current TX buffer the NIC is sending from
+    debugPrint("Current RX Buff: %08x\n", reg32(NvRegCurrentRxBuff));                                               // The current RX buffer the NIC is sending to
+
+    debugPrint("\nRX Ring:\n");
+    for (int i = 0; i < RX_RING_SIZE; i++)
+    {
+        if (i % 4 == 0 && i)
+        {
+            debugPrint("\n");
+        }
+        debugPrint("%02x: (%04x,%04d,%08x)  ", i, g_rxDescriptors[i].flags, g_rxDescriptors[i].length, g_rxDescriptors[i].paddr);
+    }
+
+    debugPrint("\n\nTX Ring:\n");
+    for (int i = 0; i < TX_RING_SIZE; i++)
+    {
+        if (i % 4 == 0 && i)
+        {
+            debugPrint("\n");
+        }
+        debugPrint("%d: (%04x,%d,%08x)", i, g_txDescriptors[i].flags, g_txDescriptors[i].length, g_txDescriptors[i].paddr);
+    }
+}
+#endif
