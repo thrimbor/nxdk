@@ -45,6 +45,7 @@ BOOL FindClose (HANDLE hFindFile);
 BOOL DeleteFileA (LPCSTR lpFileName);
 BOOL RemoveDirectoryA (LPCSTR lpPathName);
 BOOL CreateDirectoryA (LPCSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes);
+BOOL MoveFileExA (LPCSTR lpExistingFileName, LPCSTR lpNewFileName, DWORD dwFlags);
 BOOL MoveFileA (LPCSTR lpExistingFileName, LPCSTR lpNewFileName);
 BOOL CopyFileA (LPCSTR lpExistingFileName, LPCSTR lpNewFileName, BOOL bFailIfExists);
 

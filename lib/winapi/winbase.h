@@ -71,6 +71,8 @@ typedef struct  _SRWLOCK
 
 #define SRWLOCK_INIT {0}
 
+#define MOVEFILE_REPLACE_EXISTING 0x01
+
 #define FILE_BEGIN 0
 #define FILE_CURRENT 1
 #define FILE_END 2
