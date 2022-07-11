@@ -5,13 +5,8 @@
 
 #include <assert.h>
 #include <stdio.h>
+#define _CRT_RAND_S
 #include <stdlib.h>
-#define mbedtls_time            time
-#define mbedtls_time_t          time_t
-#define mbedtls_fprintf         fprintf
-#define mbedtls_exit            exit
-#define MBEDTLS_EXIT_SUCCESS    EXIT_SUCCESS
-#define MBEDTLS_EXIT_FAILURE    EXIT_FAILURE
 
 #include <lwip/netdb.h>
 #include <lwip/sockets.h>
@@ -21,7 +16,6 @@
 #include "mbedtls/entropy.h"
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/error.h"
-//#include "test/certs.h"
 
 #include <string.h>
 
@@ -29,7 +23,7 @@
 #define SERVER_NAME "google.de"
 #define GET_REQUEST "GET / HTTP/1.0\r\n\r\n"
 
-#define DEBUG_LEVEL 10
+#define DEBUG_LEVEL 1
 
 
 static void my_debug( void *ctx, int level,
@@ -39,17 +33,18 @@ static void my_debug( void *ctx, int level,
     ((void) level);
 
     debugPrint("%s:%d: %s\n", file, line, str );
-    Sleep(1000);
 }
 
 int custom_mbedtls_net_send( void *ctx, const unsigned char *buf, size_t len )
 {
-    return send((int)ctx, buf, len, 0);
+    int fd = ((mbedtls_net_context *) ctx)->fd;
+    return send(fd, buf, len, 0);
 }
 
 int custom_mbedtls_net_recv( void *ctx, unsigned char *buf, size_t len )
 {
-    return recv((int)ctx, buf, len, 0);
+    int fd = ((mbedtls_net_context *) ctx)->fd;
+    return recv(fd, buf, len, 0);
 }
 
 int custom_mbedtls_net_connect( mbedtls_net_context *ctx, const char *host,
@@ -115,12 +110,6 @@ int main( void )
 {
     XVideoSetMode(640, 480, 32, REFRESH_DEFAULT);
 
-    //DbgPrint("test123\n");
-    Sleep(5000);
-
-
-    init_rand_s();
-
     nxNetInit(NULL);
 
     debugPrint("\n");
@@ -130,7 +119,7 @@ int main( void )
     debugPrint("\n");
 
     int ret = 1, len;
-    int exit_code = MBEDTLS_EXIT_FAILURE;
+    int exit_code = EXIT_FAILURE;
     mbedtls_net_context server_fd;
     uint32_t flags;
     unsigned char buf[1024];
@@ -155,7 +144,7 @@ int main( void )
     mbedtls_x509_crt_init( &cacert );
     mbedtls_ctr_drbg_init( &ctr_drbg );
 
-    //debugPrint( "\n  . Seeding the random number generator..." );
+    debugPrint( "\n  . Seeding the random number generator..." );
 
 
     mbedtls_entropy_init( &entropy );
@@ -168,21 +157,21 @@ int main( void )
         goto exit;
     }
 
-    //debugPrint( " ok\n" );
+    debugPrint( " ok\n" );
 
     /*
      * 0. Initialize certificates
      */
-    //debugPrint( "  . Loading the CA root certificate ..." );
-
-
+    debugPrint( "  . Loading the CA root certificate ..." );
+    // We're just loading the GlobalSign Root CA used by google here
 
     FILE *f = fopen("D:\\google-de.crt", "rb");
     assert(f);
     fseek(f, 0, SEEK_END);
     long fsize = ftell(f);
-    fseek(f, 0, SEEK_SET);  /* same as rewind(f); */
+    fseek(f, 0, SEEK_SET);
 
+    // We're technically leaking this allocation
     char *string = malloc(fsize);
     fread(string, fsize, 1, f);
     fclose(f);
@@ -347,12 +336,12 @@ int main( void )
 
     mbedtls_ssl_close_notify( &ssl );
 
-    exit_code = MBEDTLS_EXIT_SUCCESS;
+    exit_code = EXIT_SUCCESS;
 
 exit:
 
 #ifdef MBEDTLS_ERROR_C
-    if( exit_code != MBEDTLS_EXIT_SUCCESS )
+    if( exit_code != EXIT_SUCCESS )
     {
         char error_buf[100];
         mbedtls_strerror( ret, error_buf, 100 );
@@ -360,7 +349,10 @@ exit:
     }
 #endif
 
+    // mbedtls_net_free does the same, but we probably shouldn't rely on that as we don't use the rest of their implementation
     //mbedtls_net_free( &server_fd );
+    shutdown(server_fd.fd, 2);
+    close(server_fd.fd);
 
     mbedtls_x509_crt_free( &cacert );
     mbedtls_ssl_free( &ssl );
@@ -368,7 +360,8 @@ exit:
     mbedtls_ctr_drbg_free( &ctr_drbg );
     mbedtls_entropy_free( &entropy );
 
-    Sleep(10000);
+    // Give the user a chance to read what we printed ;)
+    for(;;) Sleep(1000);
 
-    mbedtls_exit( exit_code );
+    return 0;
 }
