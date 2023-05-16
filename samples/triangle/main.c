@@ -87,7 +87,18 @@ int main(void)
 
     d = pb_push1(d, NV097_SET_BEGIN_END, NV097_SET_BEGIN_END_OP_END);
     //d = pb_push() // *(pb_Put+0)=1+(((DWORD)pb_Head)&0x0FFFFFFF);
-    //*d = 0b00000000000000100000000000000000;
+    *d = 0b00000000000000100000000000000000;
+    d++;
+    *d = 0b00000000000000100000000000000000;
+    d++;
+    *d = 0b00000000000000100000000000000000;
+    d++;
+    *d = 0b00000000000000100000000000000000;
+    d++;
+    d=pb_push1(d,NV20_TCL_PRIMITIVE_3D_NOP,0);
+    d=pb_push1(d,NV20_TCL_PRIMITIVE_3D_NOP,0);
+    d=pb_push1(d,NV20_TCL_PRIMITIVE_3D_NOP,0);
+    d=pb_push1(d,NV20_TCL_PRIMITIVE_3D_NOP,0);
     //*d = 0b01 | (((uint32_t)))
     //JJJJJJJJJJJJJJJJJJJJJJJJJJJJJJ01
 
@@ -159,19 +170,25 @@ int main(void)
         */
 
         // TODO: This doesn't work on hw. Ideas:
-        // - run a pb_cache_flush to flush our drawing pb
-        // - experiment with using jumps instead of call/return
+        // - run a pb_cache_flush to flush our drawing pb - no success
+        // - experiment with using jumps instead of call/return - works
         // - add multiple jumps at the end to be sure? Maybe GPU skips a word?
         // - try trace mode?
 
         pb_cache_flush();
 
+        pb_reset();
+
         uint32_t *p = pb_begin();
         if (!do_once) DbgPrint("pb_begin: p: 0x%08X\n", p);
-        //*p = 0b10 | (((uint32_t)drawing_pb) & 0x03ffffff);
-        *p = 0b01 | (((uint32_t)drawing_pb) & 0x03ffffff);
+        *p = 0b10 | (((uint32_t)drawing_pb) & 0x03ffffff);
+        //*p = 0b01 | (((uint32_t)drawing_pb) & 0x03ffffff);
         p++;
-        *d = 0x01 | (((uint32_t)p) & 0x03ffffff);
+        p=pb_push1(p,NV20_TCL_PRIMITIVE_3D_NOP,0);
+        p=pb_push1(p,NV20_TCL_PRIMITIVE_3D_NOP,0);
+        p=pb_push1(p,NV20_TCL_PRIMITIVE_3D_NOP,0);
+        p=pb_push1(p,NV20_TCL_PRIMITIVE_3D_NOP,0);
+        //*d = 0x01 | (((uint32_t)p) & 0x03ffffff);
         __asm__ __volatile__ ("wbinvd");
         pb_cache_flush();
 

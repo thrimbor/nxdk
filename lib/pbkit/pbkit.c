@@ -497,7 +497,7 @@ static void pb_vbl_handler(void)
 
 
 
-static void pb_cache_flush(void)
+void pb_cache_flush(void)
 {
     __asm__ __volatile__ ("sfence");
     //assembler instruction "sfence" : waits end of previous instructions
