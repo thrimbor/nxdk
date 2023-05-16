@@ -2,6 +2,7 @@
  * This sample provides a very basic demonstration of 3D rendering on the Xbox,
  * using pbkit. Based on the pbkit demo sources.
  */
+#include <assert.h>
 #include <hal/video.h>
 #include <hal/xbox.h>
 #include <math.h>
@@ -47,6 +48,8 @@ static void draw_arrays(unsigned int mode, int start, int count);
 /* Main program function */
 int main(void)
 {
+    HalEnableSecureTrayEject();
+
     uint32_t *p;
     int       i, status;
     int       width, height;
@@ -74,10 +77,27 @@ int main(void)
     num_vertices = sizeof(verts)/sizeof(verts[0]);
     matrix_viewport(m_viewport, 0, 0, width, height, 0, 65536.0f);
 
+
+    uint32_t *drawing_pb = MmAllocateContiguousMemoryEx(256, 0, 0x3ffb000, 0, 0x404);
+    assert(drawing_pb);
+    uint32_t *d = drawing_pb;
+    d = pb_push1(d, NV097_SET_BEGIN_END, NV097_SET_BEGIN_END_OP_TRIANGLES);
+    d = pb_push1(d, 0x40000000|NV097_DRAW_ARRAYS, //bit 30 means all params go to same register 0x1810
+                MASK(NV097_DRAW_ARRAYS_COUNT, (num_vertices-1)) | MASK(NV097_DRAW_ARRAYS_START_INDEX, 0));
+
+    d = pb_push1(d, NV097_SET_BEGIN_END, NV097_SET_BEGIN_END_OP_END);
+    //d = pb_push() // *(pb_Put+0)=1+(((DWORD)pb_Head)&0x0FFFFFFF);
+    //*d = 0b00000000000000100000000000000000;
+    //*d = 0b01 | (((uint32_t)))
+    //JJJJJJJJJJJJJJJJJJJJJJJJJJJJJJ01
+
+    DbgPrint("d: 0x%08x\n", d);
+
     /* Setup to determine frames rendered every second */
     start = now = last = GetTickCount();
     frames_total = frames = fps = 0;
 
+    int do_once = 0;
     while(1) {
         pb_wait_for_vbl();
         pb_reset();
@@ -126,7 +146,48 @@ int main(void)
                            3, sizeof(ColoredVertex), &alloc_vertices[3]);
 
         /* Begin drawing triangles */
-        draw_arrays(NV097_SET_BEGIN_END_OP_TRIANGLES, 0, num_vertices);
+        //draw_arrays(NV097_SET_BEGIN_END_OP_TRIANGLES, 0, num_vertices);
+
+/*
+        uint32_t *p = pb_begin();
+        p = pb_push1(p, NV097_SET_BEGIN_END, NV097_SET_BEGIN_END_OP_TRIANGLES);
+        p = pb_push1(p, 0x40000000|NV097_DRAW_ARRAYS, //bit 30 means all params go to same register 0x1810
+                 MASK(NV097_DRAW_ARRAYS_COUNT, (num_vertices-1)) | MASK(NV097_DRAW_ARRAYS_START_INDEX, 0));
+
+        p = pb_push1(p, NV097_SET_BEGIN_END, NV097_SET_BEGIN_END_OP_END);
+        pb_end(p);
+        */
+
+        // TODO: This doesn't work on hw. Ideas:
+        // - run a pb_cache_flush to flush our drawing pb
+        // - experiment with using jumps instead of call/return
+        // - add multiple jumps at the end to be sure? Maybe GPU skips a word?
+        // - try trace mode?
+
+        pb_cache_flush();
+
+        uint32_t *p = pb_begin();
+        if (!do_once) DbgPrint("pb_begin: p: 0x%08X\n", p);
+        //*p = 0b10 | (((uint32_t)drawing_pb) & 0x03ffffff);
+        *p = 0b01 | (((uint32_t)drawing_pb) & 0x03ffffff);
+        p++;
+        *d = 0x01 | (((uint32_t)p) & 0x03ffffff);
+        __asm__ __volatile__ ("wbinvd");
+        pb_cache_flush();
+
+        // put a few more commands here after the return
+        //p = pb_push1(p, NV097_SET_BEGIN_END, NV097_SET_BEGIN_END_OP_TRIANGLES);
+        //p = pb_push1(p, 0x40000000|NV097_DRAW_ARRAYS, //bit 30 means all params go to same register 0x1810
+        //         MASK(NV097_DRAW_ARRAYS_COUNT, (num_vertices-1)) | MASK(NV097_DRAW_ARRAYS_START_INDEX, 0));
+
+        //p = pb_push1(p, NV097_SET_BEGIN_END, NV097_SET_BEGIN_END_OP_END);
+
+        pb_end(p);
+        if (!do_once) DbgPrint("pb_end: p: 0x%08X\n", p);
+        if (!do_once) DbgPrint("DWORD at p: 0x%08X\n", *p);
+
+        do_once = -1;
+
 
         /* Draw some text on the screen */
         pb_print("Triangle Demo\n");
