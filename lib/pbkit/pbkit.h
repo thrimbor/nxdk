@@ -89,7 +89,6 @@ uint32_t   *pb_push4f(uint32_t *p, DWORD command, float param1, float param2, fl
 uint32_t   *pb_push_transposed_matrix(uint32_t *p, DWORD command, float *m);
 void    pb_end(uint32_t *pEnd);    //end a block with this (triggers the data sending to GPU)
 
-void    pb_extra_buffers(int n);//requests additional back buffers (default is 0) (call it before pb_init)
 void    pb_size(DWORD size);    //sets push buffer size (default is 512Kb) (call it before pb_init)
 void    pb_set_color_format(unsigned int fmt, bool swizzled); // sets color surface format (call it before pb_init)
 int     pb_init(void);      //returns 0 if everything went well (starts Dma engine)
@@ -100,10 +99,8 @@ void    pb_printat(int row, int col, char *format, ...);    //populates a text s
 void    pb_erase_text_screen(void); //clears array
 void    pb_draw_text_screen(void);  //converts array into drawing sequences
 
-void    pb_target_extra_buffer(int n);  //to have rendering made into a static extra buffer
 void    pb_target_back_buffer(void);    //to have rendering made into normal rotating back buffer
 
-DWORD   *pb_extra_buffer(int n);    //returns a static extra buffer address
 DWORD   *pb_back_buffer(void);      //returns normal rotating back buffer address
 DWORD   pb_back_buffer_width(void);
 DWORD   pb_back_buffer_height(void);

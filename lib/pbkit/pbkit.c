@@ -163,8 +163,6 @@ static  DWORD           pb_FBSize;      //size of 1 buffer
 static  DWORD           pb_FBGlobalSize;    //size of all buffers
 static  DWORD           pb_FBVFlag;
 static  DWORD           pb_GPUFrameBuffersFormat;//encoded format for GPU
-static  DWORD           pb_EXAddr[8];       //extra buffers addresses
-static  DWORD           pb_ExtraBuffersCount=0;
 
 static  DWORD           pb_DepthStencilAddr;
 static  DWORD           pb_DepthStencilPitch;
@@ -1819,17 +1817,6 @@ DWORD *pb_back_buffer(void)
     return (DWORD *)pb_FBAddr[pb_back_index];
 }
 
-DWORD *pb_extra_buffer(int buffer_index)
-{
-    if (buffer_index>=pb_ExtraBuffersCount)
-    {
-        debugPrint("pb_extra_buffer: buffer index out of range\n");
-        return NULL;
-    }
-
-    return (DWORD *)pb_EXAddr[buffer_index];
-}
-
 
 static void set_draw_buffer(DWORD buffer_addr)
 {
@@ -1950,17 +1937,6 @@ void pb_target_back_buffer(void)
     set_draw_buffer(pb_FBAddr[pb_back_index]&0x03FFFFFF);
 }
 
-void pb_target_extra_buffer(int buffer_index)
-{
-    if (buffer_index>=pb_ExtraBuffersCount)
-    {
-        debugPrint("pb_target_extra_buffer: buffer index out of range\n");
-        return;
-    }
-
-    set_draw_buffer(pb_EXAddr[buffer_index]&0x03FFFFFF);
-}
-
 DWORD pb_get_vbl_counter(void)
 {
     return pb_vbl_counter; //allows caller to know if a frame has been missed
@@ -2059,15 +2035,6 @@ void pb_draw_text_screen(void)
             }
         }
     }
-}
-
-
-void pb_extra_buffers(int n)
-{
-    if (n>MAX_EXTRA_BUFFERS)
-        debugPrint("Too many extra buffers\n");
-    else
-        pb_ExtraBuffersCount=n;
 }
 
 void pb_size(DWORD size)
@@ -2542,7 +2509,6 @@ void pb_kill(void)
 
     pb_running=0;
 
-    if (pb_ExtraBuffersCount) MmFreeContiguousMemory((PVOID)pb_EXAddr[0]);
     if (pb_DepthStencilAddr) MmFreeContiguousMemory((PVOID)pb_DepthStencilAddr);
     if (pb_FrameBuffersAddr) MmFreeContiguousMemory((PVOID)pb_FrameBuffersAddr);
 
@@ -3499,66 +3465,6 @@ int pb_init(void)
             0,              //DWORD tile_z_offset,
             0x84000001          //DWORD tile_flags (0x04000000 for 32 bits)
             );
-
-
-    if (pb_ExtraBuffersCount)
-    {
-        //Extra back buffers (tile #2)
-
-        //pitch is the gap between start of a pixel line and start of next pixel line
-        //(not necessarily the size of a pixel line, because of hardware optimization)
-
-        Pitch=(((ColorBpp*HSize)>>3)+0x3F)&0xFFFFFFC0; //64 units aligned
-
-        //look for a standard listed pitch value greater or equal to theoretical one
-        for(i=0;i<16;i++)
-        {
-            if (pb_TilePitches[i]>=Pitch)
-            {
-                Pitch=pb_TilePitches[i];
-                break;
-            }
-        }
-
-        Size=Pitch*VSize;
-
-        //verify 64 bytes alignment for size of a frame buffer
-        if (Size&(64-1)) debugPrint("pb_init: EXSize is not well aligned.\n");
-
-        //multiply size by number of physical frame buffers in order to obtain global size
-        EXSize=Size*pb_ExtraBuffersCount;
-
-        //Huge alignment enforcement (16 Kb aligned!) for the global size
-        EXSize=(EXSize+0x3FFF)&0xFFFFC000;
-
-        EXAddr=(DWORD)MmAllocateContiguousMemoryEx(EXSize,0,0x03FFB000,0x4000, PAGE_READWRITE | PAGE_WRITECOMBINE);
-        //NumberOfBytes,LowestAcceptableAddress,HighestAcceptableAddress,Alignment OPTIONAL,ProtectionType
-
-        if (!EXAddr)
-        {
-            pb_kill();
-            return -11;
-        }
-
-        for(i=0;i<pb_ExtraBuffersCount;i++)
-        {
-            pb_EXAddr[i]=EXAddr;
-            EXAddr+=Size;
-        }
-
-        pb_assign_tile( 2,              //int   tile_index,
-                pb_EXAddr[0]&0x03FFFFFF,    //DWORD tile_addr,
-                EXSize,             //DWORD tile_size,
-                Pitch,              //DWORD tile_pitch,
-                0,              //DWORD tile_z_start_tag,
-                0,              //DWORD tile_z_offset,
-                0               //DWORD tile_flags
-            );
-
-    }
-
-
-
 
     pb_FBVFlag=0x0000; //Quincunx & Gaussian need special flags. We don't, for now.
     pb_XScale=(float)HScale;
