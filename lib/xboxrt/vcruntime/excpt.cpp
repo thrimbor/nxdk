@@ -4,6 +4,7 @@
 // SPDX-FileCopyrightText: 2021 Lucas Jansson
 
 #include <excpt.h>
+#include <excpt_cxx.hpp>
 #include <eh.h>
 #include <xboxkrnl/xboxkrnl.h>
 
@@ -176,4 +177,25 @@ extern "C" int _except_handler3 (_EXCEPTION_RECORD *pExceptionRecord, EXCEPTION_
 
     // No filter in this frame accepted the exception, continue searching
     return DISPOSITION_CONTINUE_SEARCH;
+}
+
+
+#define MAGIC_VC  0x19930520 // up to VC6
+#define MAGIC_VC7 0x19930521 // VC7.x(2002-2003)
+#define MAGIC_VC8 0x19930522 // VC8 (2005)
+
+#define CXX_EXCEPTION 0xE06D7363
+
+/*__declspec(noreturn)*/ extern "C" void __stdcall _CxxThrowException (void *pExceptionObject, _ThrowInfo *pThrowInfo)
+{
+    EXCEPTION_RECORD exceptionRecord;
+    exceptionRecord.ExceptionCode = CXX_EXCEPTION;
+    exceptionRecord.ExceptionRecord = nullptr;
+    exceptionRecord.ExceptionAddress = (PVOID)_CxxThrowException;
+    exceptionRecord.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
+    exceptionRecord.NumberParameters = 3;
+    exceptionRecord.ExceptionInformation[0] = MAGIC_VC8;
+    exceptionRecord.ExceptionInformation[1] = (ULONG_PTR)pExceptionObject;
+    exceptionRecord.ExceptionInformation[2] = (ULONG_PTR)pThrowInfo;
+    RtlRaiseException(&exceptionRecord);
 }
