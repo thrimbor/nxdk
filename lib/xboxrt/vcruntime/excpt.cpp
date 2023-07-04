@@ -262,10 +262,10 @@ static int RethrowFilter (EXCEPTION_POINTERS *p)
 {
     PEXCEPTION_RECORD er = p->ExceptionRecord;
 
-    DbgPrint("RethrowFilter:\n");
-    DbgPrint("0: %x\n", er->ExceptionInformation[0]);
-    DbgPrint("1: %x\n", er->ExceptionInformation[1]);
-    DbgPrint("2: %x\n", er->ExceptionInformation[2]);
+    //DbgPrint("RethrowFilter:\n");
+    //DbgPrint("0: %x\n", er->ExceptionInformation[0]);
+    //DbgPrint("1: %x\n", er->ExceptionInformation[1]);
+    //DbgPrint("2: %x\n", er->ExceptionInformation[2]);
 
     if (er->ExceptionCode == CXX_EXCEPTION
         && er->NumberParameters == 3
@@ -273,10 +273,10 @@ static int RethrowFilter (EXCEPTION_POINTERS *p)
             || er->ExceptionInformation[0] == MAGIC_VC7
             || er->ExceptionInformation[0] == MAGIC_VC8)) {
         if (er->ExceptionInformation[1] == 0 && er->ExceptionInformation[2] == 0) {
-            DbgPrint("It's a simple rethrow\n");
+            //DbgPrint("It's a simple rethrow\n");
             return EXCEPTION_EXECUTE_HANDLER;
         } else {
-            DbgPrint("Another C++ exception was thrown\n");
+            //DbgPrint("Another C++ exception was thrown\n");
             //return EXCEPTION_EXECUTE_HANDLER;
         }
     }
@@ -290,29 +290,29 @@ static int RethrowFilter (EXCEPTION_POINTERS *p)
 static void *call_catch_block(void *func, void *_ebp, EXCEPTION_REGISTRATION_CXX *pRN, FuncInfo *functionInfo)
 {
     DWORD save_esp = ((DWORD*)pRN)[-1];
-    DbgPrint("Saved esp: %x\n", save_esp);
+    //DbgPrint("Saved esp: %x\n", save_esp);
     void *continue_addr;
 
-    DbgPrint("> %d: %08x\n", __LINE__, pRN);
+    //DbgPrint("> %d: %08x\n", __LINE__, pRN);
     DWORD _esp;
     asm volatile ("movl %%esp, %%eax" : "=a"(_esp));
-    DbgPrint("e> %d esp: %x\n", __LINE__, _esp);
+    //DbgPrint("e> %d esp: %x\n", __LINE__, _esp);
 
     __try {
         __try {
             continue_addr = call_ebp_func(func, _ebp);
         } __except (RethrowFilter((EXCEPTION_POINTERS *)_exception_info())) {
             // we need a proper filter here!
-            DbgPrint("RETHROW!\n");
+            //DbgPrint("RETHROW!\n");
             continue_addr = nullptr;
         }
         // FIXME: Should we intercept and handle other throws here, too?
     } __finally {
-        DbgPrint("> %d: pRN%08x\n", __LINE__, pRN);
-        DbgPrint("__finally restoring esp: %x\n", save_esp);
-        DbgPrint("previously: %x\n", ((DWORD*)pRN)[-1]);
+        //DbgPrint("> %d: pRN%08x\n", __LINE__, pRN);
+        //DbgPrint("__finally restoring esp: %x\n", save_esp);
+        //DbgPrint("previously: %x\n", ((DWORD*)pRN)[-1]);
         ((DWORD*)pRN)[-1] = save_esp;
-        DbgPrint("> %d\n", __LINE__);
+        //DbgPrint("> %d\n", __LINE__);
     }
 
     ((DWORD*)pRN)[-1] = save_esp;
@@ -322,7 +322,7 @@ static void *call_catch_block(void *func, void *_ebp, EXCEPTION_REGISTRATION_CXX
 
 static inline void continue_after_catch (EXCEPTION_REGISTRATION_CXX *frame, void *addr)
 {
-    DbgPrint("continuing at %x\n", addr);
+    //DbgPrint("continuing at %x\n", addr);
     asm volatile (
         "movl -4(%0), %%esp;"
         "leal 12(%0), %%ebp;"
@@ -394,22 +394,22 @@ static void copy_exception_object (EXCEPTION_REGISTRATION_CXX *frame, HandlerTyp
     void **destination = (void **)(((DWORD)&frame->_ebp) + catchBlock->dispCatchObj);
 
     if (catchBlock->adjectives & TYPE_FLAG_REFERENCE) {
-        DbgPrint("> %d\n", __LINE__);
+        //DbgPrint("> %d\n", __LINE__);
         *destination = get_this_ptr(exceptionObject, catchType);
     } else if (catchType->properties & CLASS_IS_SIMPLE_TYPE) {
         // Simple type, can be memmove()d
-        DbgPrint("> %d\n", __LINE__);
+        //DbgPrint("> %d\n", __LINE__);
         memmove(destination, exceptionObject, catchType->sizeOrOffset);
-        DbgPrint("> %d\n", __LINE__);
+        //DbgPrint("> %d\n", __LINE__);
         if (catchType->sizeOrOffset == sizeof(void *)) {
-            DbgPrint("> %d\n", __LINE__);
+            //DbgPrint("> %d\n", __LINE__);
             *destination = get_this_ptr(*destination, catchType);
         }
     } else if (catchType->copyFunction) {
-        DbgPrint("> %d\n", __LINE__);
+        //DbgPrint("> %d\n", __LINE__);
         call_copy_function((void *)catchType->copyFunction, destination, get_this_ptr(exceptionObject, catchType));
     } else {
-        DbgPrint("> %d\n", __LINE__);
+        //DbgPrint("> %d\n", __LINE__);
         // Simple type, can be memmove()d
         memmove(destination, get_this_ptr(exceptionObject, catchType), catchType->sizeOrOffset);
     }
@@ -430,36 +430,36 @@ static void local_unwind_cxx (EXCEPTION_REGISTRATION_CXX *frame, FuncInfo *funct
         }
 
         frame->id = functionInfo->pUnwindMap[currentTrylevel].toState;
-        DbgPrint("state transition: %d->%d\n", currentTrylevel, frame->id);
+        //DbgPrint("state transition: %d->%d\n", currentTrylevel, frame->id);
     }
 }
 
 extern "C" int CxxFrameHandlerVC8 (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRATION_CXX *pRN, CONTEXT *pContext, void *pDC, FuncInfo *functionInfo)
 {
-    DbgPrint("CxxFrameHandlerVC8\n");
+    //DbgPrint("CxxFrameHandlerVC8\n");
     // Catch block funclet might clobber esp, so save and restore it before continuing execution
     DWORD save_esp = ((DWORD*)pRN)[-1];
-    DbgPrint("Saving esp: %x\n", save_esp);
+    //DbgPrint("Saving esp: %x\n", save_esp);
 
     assert(functionInfo->magicNumber == MAGIC_VC8);
-DbgPrint("> %d\n", __LINE__);
+//DbgPrint("> %d\n", __LINE__);
     // FUNC_DESCR_SYNCHRONOUS = 1
     if (!(functionInfo->EHFlags & 1) || (pExcept->ExceptionCode != CXX_EXCEPTION)) {
-        DbgPrint("Not a C++ exception, skipping\n");
+        //DbgPrint("Not a C++ exception, skipping\n");
         return DISPOSITION_CONTINUE_SEARCH;
     }
-DbgPrint("> %d\n", __LINE__);
+//DbgPrint("> %d\n", __LINE__);
     if (pExcept->ExceptionFlags & (EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND)) {
-        DbgPrint("maxState: %d\n", functionInfo->maxState);
+        //DbgPrint("maxState: %d\n", functionInfo->maxState);
         if (functionInfo->maxState != 0) {
             local_unwind_cxx(pRN, functionInfo, -1);
         }
         return DISPOSITION_CONTINUE_SEARCH;
     }
-DbgPrint("> %d\n", __LINE__);
+//DbgPrint("> %d\n", __LINE__);
     _ThrowInfo *throwInfo = (_ThrowInfo*)pExcept->ExceptionInformation[2];
     assert(throwInfo);
-DbgPrint("> %d\n", __LINE__);
+//DbgPrint("> %d\n", __LINE__);
     for (DWORD i = 0; i < functionInfo->nTryBlocks; i++) {
         const DWORD tryLow = functionInfo->pTryBlockMap[i].tryLow;
         const DWORD tryHigh = functionInfo->pTryBlockMap[i].tryHigh;
@@ -475,35 +475,35 @@ DbgPrint("> %d\n", __LINE__);
 
         // Copy the exception object to the memory reserved by the catch block, needs to happen before unwinding
         copy_exception_object(pRN, catchBlock, catchType, (void *)pExcept->ExceptionInformation[1]);
-        DbgPrint("> %d\n", __LINE__);
+        //DbgPrint("> %d\n", __LINE__);
 
         // First global unwinding, then local unwinding
         RtlUnwind(pRN, 0, pExcept, 0);
-        DbgPrint("> %d\n", __LINE__);
+        //DbgPrint("> %d\n", __LINE__);
         local_unwind_cxx(pRN, functionInfo, tryBlock->tryLow);
-        DbgPrint("> %d\n", __LINE__);
+        //DbgPrint("> %d\n", __LINE__);
         pRN->id = tryBlock->tryHigh + 1;
-DbgPrint("> %d\n", __LINE__);
+//DbgPrint("> %d\n", __LINE__);
         void *continue_addr = call_catch_block(catchBlock->addressOfHandler, &pRN->_ebp, pRN, functionInfo);
-DbgPrint("> %d\n", __LINE__);
+//DbgPrint("> %d\n", __LINE__);
         // Restore potentially clobbered saved esp before continuing execution
         //DbgPrint("Restoring esp: %x\n", save_esp);
-        ((DWORD*)pRN)[-1] = save_esp;
-DbgPrint("> %d\n", __LINE__);
+        //((DWORD*)pRN)[-1] = save_esp;
+//DbgPrint("> %d\n", __LINE__);
         // TODO: Check correctness
         if (!continue_addr) {
-            DbgPrint("> %d\n", __LINE__);
+            //DbgPrint("> %d\n", __LINE__);
             continue;
         }
-DbgPrint("> %d\n", __LINE__);
+//DbgPrint("> %d\n", __LINE__);
         // Destroy exception object, if necessary
         if (throwInfo->pmfnUnwind) {
-            DbgPrint("> %d\n", __LINE__);
+            //DbgPrint("> %d\n", __LINE__);
             void *objaddr = (void *)(((DWORD)&pRN->_ebp) + catchBlock->dispCatchObj);
             call_destructor((void *)throwInfo->pmfnUnwind, objaddr);
-            DbgPrint("> %d\n", __LINE__);
+            //DbgPrint("> %d\n", __LINE__);
         }
-DbgPrint("> %d\n", __LINE__);
+//DbgPrint("> %d\n", __LINE__);
 
         // Resume normal execution after the catch block
         continue_after_catch(pRN, continue_addr);
