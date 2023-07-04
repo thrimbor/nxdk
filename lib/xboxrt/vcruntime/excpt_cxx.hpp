@@ -10,6 +10,51 @@ struct TypeDescriptor
     char name[0];
 };
 
+struct UnwindMapEntry
+{
+    int toState;
+    void (*action)();
+};
+
+struct HandlerType
+{
+    DWORD adjectives;
+    TypeDescriptor *pType;
+    int dispCatchObj; // ebp-relative offset to the memory reserved for the exception object
+    void *addressOfHandler;
+};
+#define TYPE_FLAG_CONST 1
+#define TYPE_FLAG_VOLATILE 2
+#define TYPE_FLAG_REFERENCE 8
+
+struct TryBlockMapEntry
+{
+    int tryLow;
+    int tryHigh;
+    int catchHigh;
+    int nCatches;
+    HandlerType *pHandlerArray;
+};
+
+struct ESTypeList
+{
+    int nCount;
+    HandlerType *pTypeArray;
+};
+
+struct FuncInfo
+{
+    DWORD magicNumber;
+    int maxState;
+    UnwindMapEntry *pUnwindMap;
+    DWORD nTryBlocks;
+    TryBlockMapEntry *pTryBlockMap;
+    DWORD nIPMapEntries;
+    void *pIPtoStateMap;
+    ESTypeList *pESTypeList;
+    int EHFlags;
+};
+
 struct PMD
 {
     int mdisp; // member offset
