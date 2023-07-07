@@ -434,6 +434,22 @@ static void local_unwind_cxx (EXCEPTION_REGISTRATION_CXX *frame, FuncInfo *funct
     }
 }
 
+static void global_unwind_cxx (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRATION_CXX *pRN)
+{
+    // This looks like it could be a normal C function call, but it can't.
+    // Despite looking like an stdcall function, RtlUnwind doesn't follow its
+    // calling convention and happily destroys register values.
+    // We work around this by using %eax and %ebx for the parameters and adding
+    // everything else to the clobber list.
+    asm volatile (
+        "pushl $0;"
+        "pushl %1;"
+        "pushl $0;"
+        "pushl %0;"
+        "call _RtlUnwind@16;"
+        : : "a"(pRN), "b"(pExcept) : "ecx", "edx", "esi", "edi", "ebp");
+}
+
 extern "C" int CxxFrameHandlerVC8 (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRATION_CXX *pRN, CONTEXT *pContext, void *pDC, FuncInfo *functionInfo)
 {
     //DbgPrint("CxxFrameHandlerVC8\n");
@@ -478,7 +494,7 @@ extern "C" int CxxFrameHandlerVC8 (PEXCEPTION_RECORD pExcept, EXCEPTION_REGISTRA
         //DbgPrint("> %d\n", __LINE__);
 
         // First global unwinding, then local unwinding
-        RtlUnwind(pRN, 0, pExcept, 0);
+        global_unwind_cxx(pExcept, pRN);
         //DbgPrint("> %d\n", __LINE__);
         local_unwind_cxx(pRN, functionInfo, tryBlock->tryLow);
         //DbgPrint("> %d\n", __LINE__);
