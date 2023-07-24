@@ -73,7 +73,8 @@ jobs:
           HOMEBREW_NO_ANALYTICS: 1
           HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: |
-          brew install llvm coreutils
+          brew unlink pkg-config
+          brew install llvm coreutils pkgconf
       - name: Build
         run: ./.ci_build_samples.sh
   ubuntu:
@@ -88,6 +89,6 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get -y update
-          sudo apt-get -y install llvm lld
+          sudo apt-get -y install llvm lld pkgconf
       - name: Build
         run: ./.ci_build_samples.sh
