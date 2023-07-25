@@ -9,8 +9,13 @@ export PKG_CONFIG_PATH=""
 export PKG_CONFIG_SYSROOT_DIR=""
 export PKG_CONFIG_LIBDIR=${NXDK_DIR}/lib/pkgconfig:${NXDK_DIR}/share/pkgconfig
 
-[ "$1" = '--version' ] && exec pkg-config --version
-exec pkg-config \
+pkg_config_cmd="pkg-config"
+if command -v pkgconf &>/dev/null; then
+    pkg_config_cmd="pkgconf"
+fi
+
+[ "$1" = '--version' ] && exec ${pkg_config_cmd} --version
+exec ${pkg_config_cmd} \
     --define-variable=NXDK_DIR=${NXDK_DIR} \
     --define-prefix \
     --static \
