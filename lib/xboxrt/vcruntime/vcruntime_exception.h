@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-// SPDX-FileCopyrightText: 2019 Stefan Schmidt
+// SPDX-FileCopyrightText: 2019-2024 Stefan Schmidt
 
 #ifndef __VCRUNTIME_EXCEPTION_H__
 #define __VCRUNTIME_EXCEPTION_H__
+
+#include <stddef.h>
 
 struct __std_exception_data
 {

@@ -25,7 +25,8 @@ XBOXRT_SRCS := \
 	$(NXDK_DIR)/lib/xboxrt/vcruntime/vcruntime_typeinfo.cpp \
 	$(NXDK_DIR)/lib/xboxrt/vcruntime/eh.cpp \
 	$(NXDK_DIR)/lib/xboxrt/vcruntime/excpt.cpp \
-	$(NXDK_DIR)/lib/xboxrt/vcruntime/framehandler.s
+	$(NXDK_DIR)/lib/xboxrt/vcruntime/framehandler.s \
+	$(NXDK_DIR)/lib/xboxrt/vcruntime/rtti.cpp
 
 XBOXRT_OBJS = $(addsuffix .obj, $(basename $(XBOXRT_SRCS)))
 
