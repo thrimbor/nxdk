@@ -15,7 +15,6 @@ void nunit_print (const char *str, ...)
 
 NUNIT_DEFINE_GLOBALS
 
-// TODO: No volatile tests yet!
 // TODO: Non-rethrowing nested throw test!
 // TODO: Test whether re-throwing can be caught in the same try block
 // TODO: mut -> const test

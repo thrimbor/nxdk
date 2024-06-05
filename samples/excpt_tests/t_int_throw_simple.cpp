@@ -136,9 +136,10 @@ TEST(Exceptions, int_throw_refcatch_overwrite_check)
 
 TEST(Exceptions, int_throw_volatile)
 {
-    volatile int v_result = 0;
+    int v_result = 0;
     try {
-        throw 1337;
+        volatile int i = 1337;
+        throw i;
         ASSERT_NOREACH();
     } catch (int v) {
         v_result = v;
@@ -153,7 +154,8 @@ TEST(Exceptions, int_throw_simple_catch_volatile)
 {
     int v_result = 0;
     try {
-        throw 1337;
+        int i = 1337;
+        throw i;
         ASSERT_NOREACH();
     } catch (volatile int v) {
         v_result = v;
