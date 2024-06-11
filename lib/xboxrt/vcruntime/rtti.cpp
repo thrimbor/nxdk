@@ -7,6 +7,10 @@
 #include <vcruntime_typeinfo.h>
 #include <windef.h>
 
+// LLVM seems to have issues resolving runtime functions that are pulled in by
+// other runtime functions, so we manually force inclusion
+#pragma comment(linker, "/include:__CxxThrowException@8")
+
 struct RTTIClassHierarchyDescriptor;
 
 /**
