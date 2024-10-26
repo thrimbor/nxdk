@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: CC0-1.0
+
+# SPDX-FileCopyrightText: 2024 Stefan Schmidt
+
+[constants]
+nxdk_path = '@DIRNAME@' / '../../../'
+
+[binaries]
+c = 'nxdk-cc'
+cpp = 'nxdk-cxx'
+c_ld = 'nxdk-link'
+cpp_ld = 'nxdk-link'
+as = 'nxdk-as'
+lib = 'nxdk-lib'
+strip = 'llvm-strip'
+pkg-config = 'nxdk-pkgconfig'
+
+[host_machine]
+cpu_family = 'x86'
+cpu = 'pentium3'
+endian = 'little'
+system = 'xbox'
+
+[built-in options]
+c_link_args = [
+    nxdk_path / 'lib/libwinapi.lib',
+    nxdk_path / 'lib/xboxkrnl/libxboxkrnl.lib',
+    nxdk_path / 'lib/libxboxrt.lib',
+    nxdk_path / 'lib/libpdclib.lib',
+    nxdk_path / 'lib/libnxdk_hal.lib',
+    nxdk_path / 'lib/libnxdk.lib',
+    nxdk_path / 'lib/nxdk_usb.lib']
