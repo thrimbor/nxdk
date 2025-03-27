@@ -4,13 +4,22 @@
 #include <xboxkrnl/xboxkrnl.h>
 #include <hal/debug.h>
 #include "usbh_config_xbox.h"
+#include <usb.h>
 
+extern USBH_T *_ohci;
 extern void OHCI_IRQHandler(void);
 static KINTERRUPT InterruptObject;
+static KDPC DpcObject;
 static BOOLEAN __stdcall ISR(PKINTERRUPT Interrupt, PVOID ServiceContext)
 {
-    OHCI_IRQHandler();
+    DISABLE_OHCI_IRQ();
+    KeInsertQueueDpc(&DpcObject, NULL, NULL);
     return TRUE;
+}
+static VOID NTAPI dpcRoutine(PKDPC dpc, PVOID DeferredContext, PVOID arg1, PVOID arg2)
+{
+    OHCI_IRQHandler();
+    ENABLE_OHCI_IRQ();
 }
 
 //Initialise the systems ohci irq and irq handler.
@@ -25,6 +34,7 @@ void usbh_ohci_irq_init() {
                           irql,
                           LevelSensitive,
                           FALSE);
+    KeInitializeDpc(&DpcObject, dpcRoutine, NULL);
     KeConnectInterrupt(&InterruptObject);
 }
 
@@ -41,8 +51,9 @@ void *usbh_allocate_memory_pool(uint32_t size, uint32_t boundary) {
                                         PAGE_READWRITE | PAGE_NOCACHE);
 }
 
-void usbh_free_memory_pool(void *memory_pool) {
+void *usbh_free_memory_pool(void *memory_pool) {
     MmFreeContiguousMemory(memory_pool);
+    return memory_pool;
 }
 
 //Return the system tick count in 10ms blocks
@@ -87,7 +98,7 @@ void *usbh_virt_to_dma(void *virtual_address) {
     return (void *)MmGetPhysicalAddress(virtual_address);
 }
 
-void usbh_sysprintf(const char *buffer)
+void usbh_sysprintf(const char *buffer, ...)
 {
     debugPrint("%s", buffer);
 }
