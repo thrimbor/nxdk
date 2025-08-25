@@ -182,8 +182,6 @@ static  DWORD           pb_DmaChID9Inst;
 static  DWORD           pb_DmaChID10Inst;
 static  DWORD           pb_DmaChID11Inst;
 
-static volatile DWORD  *pb_DmaUserAddr;
-
 static  DWORD           pb_PushIndex;
 static  DWORD           *pb_PushStart;
 static  DWORD           *pb_PushNext;
@@ -1482,12 +1480,11 @@ static void pb_start(void)
         //asks push buffer Dma engine to detect incoming Dma data (written at pb_Put)
 
         pb_cache_flush();
-        *(pb_DmaUserAddr+0x40/4)=((DWORD)pb_Put)&0x03FFFFFF;
+        VIDEOREG(NV_USER_DMA_PUT(0)) = ((DWORD)pb_Put)&0x03FFFFFF;
         //from now any write will be detected
 
 #ifdef DBG
-        if ((*(pb_DmaUserAddr+0x44/4))>0x04000000)
-        {
+        if (VIDEOREG(NV_USER_DMA_GET(0)) > 0x04000000) {
             debugPrint("pb_start: wrong GetAddr\n");
             return;
         }
@@ -1531,8 +1528,7 @@ static void pb_jump_to_head(void)
     //wait for arrival of Gpu Get to push buffer head
     do
     {
-        if ((*(pb_DmaUserAddr+0x44/4))>0x04000000)
-        {
+        if (VIDEOREG(NV_USER_DMA_GET(0)) > 0x04000000) {
 #ifdef DBG
             debugPrint("pb_reset: bad getaddr\n");
 #endif
@@ -1547,7 +1543,7 @@ static void pb_jump_to_head(void)
         }
 
         //converts physical address into virtual address
-        pGetAddr=(uint32_t *)((*(pb_DmaUserAddr+0x44/4))|0x80000000);
+        pGetAddr = (uint32_t *)(VIDEOREG(NV_USER_DMA_GET(0))|0x80000000);
     }while (pGetAddr!=pb_Head);
 
 }
@@ -1566,7 +1562,7 @@ int pb_busy(void)
     DWORD           PutAddr;
     DWORD           GetAddr;
 
-    GetAddr=*(pb_DmaUserAddr+0x44/4);
+    GetAddr = VIDEOREG(NV_USER_DMA_GET(0));
 #ifdef DBG
     if (GetAddr>0x04000000)
     {
@@ -2070,14 +2066,13 @@ void pb_kill(void)
 
         while(1)
         {
-            if ((*(pb_DmaUserAddr+0x44/4))>0x04000000)
-            {
+            if (VIDEOREG(NV_USER_DMA_GET(0)) > 0x04000000) {
                 debugPrint("pb_kill: Bad get addr\n");
                 break;
             }
 
             //did GetAddr reach push buffer head as planned?
-            if (((*(pb_DmaUserAddr+0x44/4))&0x0FFFFFFF)==(((DWORD)pb_Head)&0x0FFFFFFF)) break;
+            if ((VIDEOREG(NV_USER_DMA_GET(0)) & 0x0FFFFFFF)==(((DWORD)pb_Head)&0x0FFFFFFF)) break;
 
             if (KeTickCount-TimeStampTicks>TICKSTIMEOUT)
             {
@@ -2216,8 +2211,6 @@ int pb_init(void)
     struct s_CtxDma sGrObject14;
     struct s_CtxDma sGrObject16;
     struct s_CtxDma sGrObject17;
-
-    DWORD           UserAddr;
 
     DWORD           TimeStamp1;
     DWORD           TimeStamp2;
@@ -2729,8 +2722,6 @@ int pb_init(void)
     pb_FifoChannelsReady|=(1<<channel);
 
 
-    UserAddr=VIDEO_BASE+NV_USER+(pb_FifoChannelID<<16);
-
     pb_bind_channel(&sDmaObject6);
     pb_bind_channel(&sDmaObject12);
     pb_bind_channel(&sDmaObject2);
@@ -2753,8 +2744,6 @@ int pb_init(void)
     pb_bind_channel(&sGrObject16);
     pb_bind_channel(&sGrObject17);
 
-    pb_DmaUserAddr=(DWORD *)UserAddr;   //VIDEOBASE+NV_USER+(0<<16)
-
     pb_PushBase=(DWORD)pb_Head;
     pb_PushLimit=(DWORD)pb_Tail;
 
@@ -2773,12 +2762,10 @@ int pb_init(void)
 //  debugPrint("Waiting undil DMA is ready\n");
 #endif
     //wait until DMA is ready
-    while(1)
-    {
-        GetAddr=*(pb_DmaUserAddr+0x44/4);
+    while(1) {
+        GetAddr = VIDEOREG(NV_USER_DMA_GET(0));
 
-        if (GetAddr>0x04000000)
-        {
+        if (GetAddr > 0x04000000) {
             debugPrint("pb_init: Bad getaddr\n");
             pb_kill();
             return -9;

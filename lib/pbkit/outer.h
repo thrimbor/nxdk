@@ -525,5 +525,8 @@
 #define NV_PRAMIN						0x00700000
 
 #define NV_USER							0x00800000
+#define NV_USER_SIZE                    0x00010000
+#define NV_USER_DMA_PUT(i)              (NV_USER + 0x40 + (i * NV_USER_SIZE))
+#define NV_USER_DMA_GET(i)              (NV_USER + 0x44 + (i * NV_USER_SIZE))
 
 #endif // _PBKIT_OUTER_H_
