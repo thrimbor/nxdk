@@ -34,6 +34,7 @@ extern "C"
 #include "pbkit_framebuffer.h"
 #include "pbkit_print.h"
 #include "pbkit_pushbuffer.h"
+#include "pbkit_memory.h"
 
 void    pb_show_front_screen(void); //shows scene (allows VBL synced screen swapping)
 void    pb_show_debug_screen(void); //shows debug screen (default openxdk+SDL buffer)

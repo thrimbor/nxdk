@@ -263,24 +263,6 @@ static void pb_vbl_handler(void)
     VIDEOREG8(NV_PRMCIO_CRX__COLOR)=old_color_addr; //restore color index
 }
 
-
-
-
-
-
-
-static void pb_cache_flush(void)
-{
-    __asm__ __volatile__ ("sfence");
-    //assembler instruction "sfence" : waits end of previous instructions
-
-    VIDEOREG(NV_PFB_WC_CACHE)|=NV_PFB_WC_CACHE_FLUSH_TRIGGER;
-    while(VIDEOREG(NV_PFB_WC_CACHE)&NV_PFB_WC_CACHE_FLUSH_IN_PROGRESS) {};
-}
-
-
-
-
 static void pb_subprog(DWORD subprogID, DWORD paramA, DWORD paramB)
 {
     //inner registers 0x1D8C & 0x1D90 match 2 outer registers :
@@ -1479,7 +1461,7 @@ static void pb_start(void)
     {
         //asks push buffer Dma engine to detect incoming Dma data (written at pb_Put)
 
-        pb_cache_flush();
+        pbFlushWCBuffer();
         VIDEOREG(NV_USER_DMA_PUT(0)) = ((DWORD)pb_Put)&0x03FFFFFF;
         //from now any write will be detected
 
