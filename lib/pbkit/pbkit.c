@@ -2074,9 +2074,9 @@ void pb_kill(void)
     pb_uninstall_gpu_interrupt();
     KeRemoveQueueDpc(&pb_DPCObject);
 
-    if (pb_ExtraBuffersCount) MmFreeContiguousMemory((PVOID)pb_EXAddr[0]);
-    if (pb_DepthStencilAddr) MmFreeContiguousMemory((PVOID)pb_DepthStencilAddr);
-    if (pb_FrameBuffersAddr) MmFreeContiguousMemory((PVOID)pb_FrameBuffersAddr);
+    if (pb_ExtraBuffersCount) pbFreeWC((PVOID)pb_EXAddr[0]);
+    if (pb_DepthStencilAddr) pbFreeWC((PVOID)pb_DepthStencilAddr);
+    if (pb_FrameBuffersAddr) pbFreeWC((PVOID)pb_FrameBuffersAddr);
 
     if (pb_DmaBuffer8) MmFreeContiguousMemory(pb_DmaBuffer8);
     if (pb_DmaBuffer2) MmFreeContiguousMemory(pb_DmaBuffer2);
@@ -2948,7 +2948,7 @@ int pb_init(void)
     //Huge alignment enforcement (16 Kb aligned!) for the global size
     FBSize=(FBSize+0x3FFF)&0xFFFFC000;
 
-    FBAddr = (DWORD)MmAllocateContiguousMemoryEx(FBSize, 0, 0x03FFB000, 0x4000, PAGE_READWRITE | PAGE_WRITECOMBINE);
+    FBAddr = (DWORD)pbAllocWC(FBSize, 0x4000);
 
     pb_FBGlobalSize=FBSize;
 
@@ -3020,7 +3020,7 @@ int pb_init(void)
     //Huge alignment enforcement (16 Kb aligned!) for the global size
     DSSize=(DSSize+0x3FFF)&0xFFFFC000;
 
-    DSAddr = (DWORD)MmAllocateContiguousMemoryEx(DSSize, 0, 0x03FFB000, 0x4000, PAGE_READWRITE | PAGE_WRITECOMBINE);
+    DSAddr = (DWORD)pbAllocWC(DSSize, 0x4000);
 
     pb_DepthStencilAddr=DSAddr;
     if (!DSAddr)
@@ -3071,7 +3071,7 @@ int pb_init(void)
         //Huge alignment enforcement (16 Kb aligned!) for the global size
         EXSize=(EXSize+0x3FFF)&0xFFFFC000;
 
-        EXAddr = (DWORD)MmAllocateContiguousMemoryEx(EXSize, 0, 0x03FFB000, 0x4000, PAGE_READWRITE | PAGE_WRITECOMBINE);
+        EXAddr = (DWORD)pbAllocWC(EXSize, 0x4000);
         if (!EXAddr)
         {
             pb_kill();

@@ -91,7 +91,7 @@ int main(void)
     init_shader();
     init_textures();
 
-    alloc_vertices = MmAllocateContiguousMemoryEx(sizeof(vertices), 0, MAXRAM, 0, PAGE_READWRITE | PAGE_WRITECOMBINE);
+    alloc_vertices = pbAllocWC(sizeof(vertices), 0);
     memcpy(alloc_vertices, vertices, sizeof(vertices));
     num_vertices = sizeof(vertices)/sizeof(vertices[0]);
     num_indices = sizeof(indices)/sizeof(indices[0]);
@@ -263,7 +263,7 @@ int main(void)
     }
 
     /* Unreachable cleanup code */
-    MmFreeContiguousMemory(alloc_vertices);
+    pbFreeWC(alloc_vertices);
     pb_show_debug_screen();
     pb_kill();
     return 0;
@@ -332,7 +332,7 @@ static void init_textures(void)
     texture.width = texture_width;
     texture.height = texture_height;
     texture.pitch = texture.width*4;
-    texture.addr = MmAllocateContiguousMemoryEx(texture.pitch*texture.height, 0, MAXRAM, 0, PAGE_READWRITE | PAGE_WRITECOMBINE);
+    texture.addr = pbAllocWC(texture.pitch * texture.height, 0);
     memcpy(texture.addr, texture_rgba, sizeof(texture_rgba));
 }
 

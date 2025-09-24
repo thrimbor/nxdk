@@ -14,4 +14,25 @@
  */
 void pbFlushWCBuffer (void);
 
+/**
+ * Allocates a block of write-combined physically contiguous memory.
+ *
+ * The allocated memory is always aligned to a page-boundary (4KiB).
+ *
+ * @param size The number of bytes to allocate
+ * @param alignment Optional alignment, must be a power of two.
+ * @return A pointer in virtual address space to where the allocated memory is
+ *         mapped, or NULL if the allocation failed.
+ */
+void *pbAllocWC (size_t size, size_t alignment);
+
+/**
+ * Frees a block of write-combined contiguous physical memory (allocated with
+ * pbAllocWC).
+ *
+ * @param address The pointer in virtual address space to where the allocated
+ *                memory is mapped.
+ */
+void pbFreeWC (void *address);
+
 #endif // PBKIT_MEMORY_H
