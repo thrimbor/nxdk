@@ -55,7 +55,6 @@
 
 #define GPU_IRQ                     3
 
-#define XTAL_16MHZ                  16.6667f
 #define DW_XTAL_16MHZ                   16666666
 
 #define MAX_EXTRA_BUFFERS               8
@@ -107,8 +106,6 @@ static  DWORD           pb_Size=PBKIT_PUSHBUFFER_SIZE;//push buffer size, must b
 static  uint32_t        *pb_Head;   //points at push buffer head
 static  uint32_t        *pb_Tail;   //points at push buffer tail
 static  uint32_t        *pb_Put=NULL;   //where next command+params are to be written
-
-static  float           pb_CpuFrequency;
 
 static  DWORD           pb_GpuInstMem;
 
@@ -2272,8 +2269,6 @@ int pb_init(void)
 
     int         n;
 
-    DWORD           value;
-
     if (pb_running) return -8;
 
     //reset global vars (except pb_Size)
@@ -2628,16 +2623,6 @@ int pb_init(void)
 
     VIDEOREG(NV_PFIFO_INTR_0)=NV_PFIFO_INTR_0_ALL_RESET;
     VIDEOREG(NV_PFIFO_INTR_EN_0)=NV_PFIFO_INTR_EN_0_ALL_ENABLE;;
-
-
-    //calculate number of CPU cycles per second
-    HalReadWritePCISpace(0,0x60,0x6C,&value,4,FALSE);
-        //BusNumber,SlotNumber,RegisterNumber,pBuffer,Length,bWritePCISpace
-    if (value&0xFF)
-        pb_CpuFrequency=5.5f*((float)((value>>8)&0xFF))*(XTAL_16MHZ/((float)(value&0xFF)));
-    else
-        pb_CpuFrequency=733.33f; //Mhz, theoretically
-
 
     pb_create_dma_ctx(3,DMA_CLASS_3D,0,MAXRAM,&sDmaObject3);
     pb_create_dma_ctx(5,DMA_CLASS_2,0,MAXRAM,&sDmaObject5);
