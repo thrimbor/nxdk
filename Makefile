@@ -32,6 +32,7 @@ endif
 ifneq (,$(findstring MSYS_NT,$(UNAME_S)))
 $(error Please use a MinGW64 shell)
 endif
+
 ifneq (,$(findstring MINGW,$(UNAME_S)))
 CGC          = $(NXDK_DIR)/tools/cg/win/cgc
 endif
@@ -43,10 +44,13 @@ FP20COMPILER = $(NXDK_DIR)/tools/fp20compiler/fp20compiler
 EXTRACT_XISO = $(NXDK_DIR)/tools/extract-xiso/build/extract-xiso
 TOOLS        = cxbe vp20compiler fp20compiler extract-xiso
 
+# Debug flags used to build the debug variants of the toolchain libraries (always available)
+NXDK_DBG_ASFLAGS := $(NXDK_ASFLAGS) -g -gdwarf-4
+NXDK_DBG_CFLAGS  := $(NXDK_CFLAGS) -g -gdwarf-4
+NXDK_DBG_CXXFLAGS:= $(NXDK_CXXFLAGS) -g -gdwarf-4
+
+# Keep the existing behavior that sets linker debug option when user requested DEBUG
 ifeq ($(DEBUG),y)
-NXDK_ASFLAGS += -g -gdwarf-4
-NXDK_CFLAGS += -g -gdwarf-4
-NXDK_CXXFLAGS += -g -gdwarf-4
 NXDK_LDFLAGS += -debug
 endif
 
@@ -56,14 +60,29 @@ NXDK_CFLAGS += -flto
 NXDK_CXXFLAGS += -flto
 endif
 
-ifneq ($(GEN_XISO),)
-TARGET += $(GEN_XISO)
+# library suffix for linking user programs: use debug variants when DEBUG=y
+ifeq ($(DEBUG),y)
+NXDK_LIB_SUFFIX = d
+else
+NXDK_LIB_SUFFIX =
 endif
 
-ifneq ($(NXDK_ONLY),)
-NXDK_CXX = y
-NXDK_SDL = y
-TARGET = main.exe
+# list of core toolchain libraries to pass explicitly to the linker (use suffix)
+NXDK_LINK_LIBS := \
+  $(NXDK_DIR)/lib/libwinapi$(NXDK_LIB_SUFFIX).lib \
+  $(NXDK_DIR)/lib/xboxkrnl/libxboxkrnl$(NXDK_LIB_SUFFIX).lib \
+  $(NXDK_DIR)/lib/libxboxrt$(NXDK_LIB_SUFFIX).lib \
+  $(NXDK_DIR)/lib/libpdclib$(NXDK_LIB_SUFFIX).lib \
+  $(NXDK_DIR)/lib/libnxdk_hal$(NXDK_LIB_SUFFIX).lib \
+  $(NXDK_DIR)/lib/libnxdk$(NXDK_LIB_SUFFIX).lib \
+  $(NXDK_DIR)/lib/nxdk_usb$(NXDK_LIB_SUFFIX).lib
+
+ifeq ($(NXDK_DIR),)
+NXDK_DIR = $(shell pwd)
+endif
+
+ifeq ($(XBE_TITLE),)
+XBE_TITLE = nxdk_app
 endif
 
 all: $(TARGET)
@@ -117,7 +136,7 @@ main.exe: $(OBJS)
 else
 main.exe: $(OBJS) $(NXDK_DIR)/lib/xboxkrnl/libxboxkrnl.lib
 	@echo "[ LD       ] $@"
-	$(VE) $(LD) $(NXDK_LDFLAGS) $(LDFLAGS) -out:'$@' $^
+	$(VE) $(LD) $(NXDK_LDFLAGS) $(LDFLAGS) -out:'$@' $^ $(NXDK_LINK_LIBS)
 endif
 
 %.lib:
@@ -136,57 +155,20 @@ endif
 	@echo "[ AS       ] $@"
 	$(VE) $(AS) $(NXDK_ASFLAGS) $(ASFLAGS) -c -o '$@' '$<'
 
-%.inl: %.vs.cg $(VP20COMPILER)
-	@echo "[ CG       ] $@"
-	$(VE) $(CGC) -profile vp20 -o $@.$$$$ $< $(QUIET) && \
-	$(VP20COMPILER) $@.$$$$ > $@ && \
-	rm -rf $@.$$$$
+# Build debug objects that won't collide with normal objects (source.c -> source.d.obj)
+%.d.obj: %.cpp
+	@echo "[ CXX DBG  ] $@"
+	$(VE) $(CXX) $(NXDK_DBG_CXXFLAGS) $(CXXFLAGS) -MD -MP -MT '$@' -MF '$(patsubst %.d.obj,%.cpp.d,$@)' -c -o '$@' '$<'
 
-%.inl: %.ps.cg $(FP20COMPILER)
-	@echo "[ CG       ] $@"
-	$(VE) $(CGC) -profile fp20 -o $@.$$$$ $< $(QUIET) && \
-	$(FP20COMPILER) $@.$$$$ > $@ && \
-	rm -rf $@.$$$$
+%.d.obj: %.c
+	@echo "[ CC DBG   ] $@"
+	$(VE) $(CC) $(NXDK_DBG_CFLAGS) $(CFLAGS) -MD -MP -MT '$@' -MF '$(patsubst %.d.obj,%.c.d,$@)' -c -o '$@' '$<'
 
-tools: $(TOOLS)
-.PHONY: tools $(TOOLS)
+%.d.obj: %.s
+	@echo "[ AS DBG   ] $@"
+	$(VE) $(AS) $(NXDK_DBG_ASFLAGS) $(ASFLAGS) -c -o '$@' '$<'
 
-cxbe: $(CXBE)
-$(CXBE):
-	@echo "[ BUILD    ] $@"
-	$(VE)$(MAKE) -C $(NXDK_DIR)/tools/cxbe $(QUIET)
+ifneq ($(GEN_XISO),)
+DEPS += $(filter %.c.d, $(SRCS:.c=.c.d))
+endif
 
-vp20compiler: $(VP20COMPILER)
-$(VP20COMPILER):
-	@echo "[ BUILD    ] $@"
-	$(VE)$(MAKE) -C $(NXDK_DIR)/tools/vp20compiler $(QUIET)
-
-fp20compiler: $(FP20COMPILER)
-$(FP20COMPILER):
-	@echo "[ BUILD    ] $@"
-	$(VE)$(MAKE) -C $(NXDK_DIR)/tools/fp20compiler $(QUIET)
-
-extract-xiso: $(EXTRACT_XISO)
-$(EXTRACT_XISO):
-	@echo "[ BUILD    ] $@"
-	$(VE)(mkdir $(NXDK_DIR)/tools/extract-xiso/build; \
-	cd $(NXDK_DIR)/tools/extract-xiso/build && \
-	cmake -G "Unix Makefiles" .. $(QUIET) && \
-	$(MAKE) $(QUIET))
-
-.PHONY: clean
-clean: $(CLEANRULES)
-	$(VE)rm -f $(TARGET) \
-	           main.exe main.exe.manifest main.lib \
-	           $(OBJS) $(SHADER_OBJS) $(DEPS) \
-	           $(GEN_XISO)
-
-.PHONY: distclean
-distclean: clean
-	$(VE)rm -rf $(NXDK_DIR)/tools/extract-xiso/build
-	$(VE)$(MAKE) -C $(NXDK_DIR)/tools/fp20compiler distclean $(QUIET)
-	$(VE)$(MAKE) -C $(NXDK_DIR)/tools/vp20compiler distclean $(QUIET)
-	$(VE)$(MAKE) -C $(NXDK_DIR)/tools/cxbe clean $(QUIET)
-	$(VE)bash -c "if [ -d $(OUTPUT_DIR) ]; then rmdir $(OUTPUT_DIR); fi"
-
--include $(DEPS)
