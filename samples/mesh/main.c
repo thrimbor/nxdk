@@ -175,16 +175,13 @@ int main(void)
         p = pb_push1(p, NV20_TCL_PRIMITIVE_3D_VP_UPLOAD_CONST_ID, 96);
 
         /* Send the model matrix */
-        pb_push(p++, NV20_TCL_PRIMITIVE_3D_VP_UPLOAD_CONST_X, 16);
-        memcpy(p, m_model, 16*4); p+=16;
+        p = pb_push_transposed_matrix(p, NV20_TCL_PRIMITIVE_3D_VP_UPLOAD_CONST_X, m_model);
 
         /* Send the view matrix */
-        pb_push(p++, NV20_TCL_PRIMITIVE_3D_VP_UPLOAD_CONST_X, 16);
-        memcpy(p, m_view, 16*4); p+=16;
+        p = pb_push_transposed_matrix(p, NV20_TCL_PRIMITIVE_3D_VP_UPLOAD_CONST_X, m_view);
 
         /* Send the projection matrix */
-        pb_push(p++, NV20_TCL_PRIMITIVE_3D_VP_UPLOAD_CONST_X, 16);
-        memcpy(p, m_proj, 16*4); p+=16;
+        p = pb_push_transposed_matrix(p, NV20_TCL_PRIMITIVE_3D_VP_UPLOAD_CONST_X, m_proj);
 
         /* Send camera position */
         pb_push(p++, NV20_TCL_PRIMITIVE_3D_VP_UPLOAD_CONST_X, 4);
@@ -202,8 +199,8 @@ int main(void)
         pb_push(p++, NV20_TCL_PRIMITIVE_3D_VP_UPLOAD_CONST_X, 4);
         memcpy(p, &light_ambient, 4); p+=4;
 
-        /* Send shader constants 0 2 64 1 */
-        float constants_0[4] = {0, 2, 64, 1};
+        /* Send shader constants 1 0 2 64 */
+        float constants_0[4] = {1, 0, 2, 64};
         pb_push(p++, NV20_TCL_PRIMITIVE_3D_VP_UPLOAD_CONST_X, 4);
         memcpy(p, constants_0, 4*4); p+=4;
 

@@ -172,9 +172,9 @@ static void matrix_viewport(float out[4][4], float x, float y, float width, floa
     out[1][1] = height/-2.0f;
     out[2][2] = z_max - z_min;
     out[3][3] = 1.0f;
-    out[3][0] = x + width/2.0f;
-    out[3][1] = y + height/2.0f;
-    out[3][2] = z_min;
+    out[0][3] = x + width/2.0f;
+    out[1][3] = y + height/2.0f;
+    out[2][3] = z_min;
 }
 
 /* Load the shader we will render with */

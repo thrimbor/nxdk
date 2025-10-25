@@ -30,8 +30,8 @@ vOut main(
 	float3 norm;
 
 	/* Transform position and normal */
-	pos = mul(float4(I.pos.xyz, 1.0), m_model);
-	norm = normalize(mul(float4(I.norm.xyz, 0.0f), m_model).xyz);
+	pos = mul(m_model, float4(I.pos.xyz, 1.0));
+	norm = normalize(mul(m_model, float4(I.norm.xyz, 0.0f)).xyz);
 
 	/* Calculate light direction */
 	light_dir = normalize(light_pos.xyz - pos.xyz);
@@ -49,8 +49,8 @@ vOut main(
 	light_intensity = saturate(light_intensity);
 
 	/* Transform pos to screen space */
-	pos = mul(pos, m_view);
-	pos = mul(pos, m_proj);
+	pos = mul(m_view, pos);
+	pos = mul(m_proj, pos);
 	pos.xyz = pos.xyz / pos.w;
 
 	result.pos  = pos;
