@@ -428,12 +428,23 @@ Parse_AbsParamReg(struct parse_state *parseState, int *regNum)
 
    EXPECT("[");
 
+   if (!Peek_Token(parseState, token))
+      RETURN_ERROR;
+
+   bool negative_reg = false;
+   if (token[0] == '-') {
+       (void) Parse_Token(parseState, token); /* consume - */
+       negative_reg = true;
+   }
+
    if (!Parse_Token(parseState, token))
       RETURN_ERROR;
 
    if (IsDigit(token[0])) {
       /* a numbered program parameter register */
       int reg = atoi((char *) token);
+      if (negative_reg)
+          reg = -reg;
       if (reg >= MAX_NV_VERTEX_PROGRAM_PARAMS)
          RETURN_ERROR1("Bad program parameter number");
       *regNum = reg;
@@ -460,11 +471,21 @@ Parse_ParamReg(struct parse_state *parseState, struct prog_src_register *srcReg)
    if (!Peek_Token(parseState, token))
       RETURN_ERROR;
 
+   bool negative_reg = false;
+   if (token[0] == '-') {
+       (void) Parse_Token(parseState, token); /* consume - */
+       if (!Peek_Token(parseState, token))
+          RETURN_ERROR;
+       negative_reg = true;
+   }
+
    if (IsDigit(token[0])) {
       /* a numbered program parameter register */
       int reg;
       (void) Parse_Token(parseState, token);
       reg = atoi((char *) token);
+      if (negative_reg)
+          reg = -reg;
       if (reg >= MAX_NV_VERTEX_PROGRAM_PARAMS)
          RETURN_ERROR1("Bad program parameter number");
       srcReg->File = PROGRAM_ENV_PARAM;
