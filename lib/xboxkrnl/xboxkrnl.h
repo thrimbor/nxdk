@@ -12,8 +12,10 @@
 
 #pragma once
 
-#include <xboxkrnl/xboxdef.h>
+#pragma comment(lib, "libxboxkrnl.lib")
+
 #include <xboxkrnl/ntstatus.h>
+#include <xboxkrnl/xboxdef.h>
 
 /* stop clang from crying */
 #pragma clang diagnostic push
