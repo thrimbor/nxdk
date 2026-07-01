@@ -6,6 +6,8 @@
 #ifndef __FILEAPI_H__
 #define __FILEAPI_H__
 
+#include <winapi_include_lib.h>
+
 #include <winbase.h>
 #include <windef.h>
 #include <winnt.h>

@@ -5,6 +5,8 @@
 #ifndef __PROCESSTHREADSAPI_H__
 #define __PROCESSTHREADSAPI_H__
 
+#include <winapi_include_lib.h>
+
 #include <winbase.h>
 #include <windef.h>
 

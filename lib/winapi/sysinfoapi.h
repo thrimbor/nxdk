@@ -6,6 +6,8 @@
 #ifndef __SYSINFOAPI_H__
 #define __SYSINFOAPI_H__
 
+#include <winapi_include_lib.h>
+
 #include <minwinbase.h>
 
 #ifdef __cplusplus

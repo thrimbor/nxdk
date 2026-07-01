@@ -5,6 +5,8 @@
 #ifndef __DEBUGAPI_H__
 #define __DEBUGAPI_H__
 
+#include <winapi_include_lib.h>
+
 #include <windef.h>
 
 #ifdef __cplusplus

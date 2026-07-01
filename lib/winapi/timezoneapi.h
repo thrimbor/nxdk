@@ -6,6 +6,8 @@
 #ifndef __TIMEZONEAPI_H__
 #define __TIMEZONEAPI_H__
 
+#include <winapi_include_lib.h>
+
 #include <minwinbase.h>
 
 #ifdef __cplusplus

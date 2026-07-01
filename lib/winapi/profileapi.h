@@ -5,6 +5,8 @@
 #ifndef __PROFILEAPI_H__
 #define __PROFILEAPI_H__
 
+#include <winapi_include_lib.h>
+
 #include <windef.h>
 
 #ifdef __cplusplus

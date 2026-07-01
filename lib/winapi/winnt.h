@@ -7,6 +7,8 @@
 #ifndef __WINNT_H__
 #define __WINNT_H__
 
+#include <winapi_include_lib.h>
+
 #include <xboxkrnl/xboxdef.h>
 
 typedef LONG HRESULT;

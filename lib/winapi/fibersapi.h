@@ -5,6 +5,8 @@
 #ifndef __FIBERSAPI_H__
 #define __FIBERSAPI_H__
 
+#include <winapi_include_lib.h>
+
 #include <winbase.h>
 
 #ifdef __cplusplus

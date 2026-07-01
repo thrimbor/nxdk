@@ -5,6 +5,8 @@
 #ifndef __PROCESS_H__
 #define __PROCESS_H__
 
+#include <winapi_include_lib.h>
+
 #include <stdint.h>
 
 #ifdef __cplusplus

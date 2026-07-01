@@ -5,6 +5,8 @@
 #ifndef __SHLOBJ_CORE_H__
 #define __SHLOBJ_CORE_H__
 
+#include <winapi_include_lib.h>
+
 #include <minwinbase.h>
 #include <windef.h>
 #include <winnt.h>

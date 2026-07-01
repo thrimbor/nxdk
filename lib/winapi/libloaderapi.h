@@ -5,6 +5,8 @@
 #ifndef __LIBLOADERAPI_H__
 #define __LIBLOADERAPI_H__
 
+#include <winapi_include_lib.h>
+
 #include <windef.h>
 
 #ifdef __cplusplus

@@ -5,6 +5,8 @@
 #ifndef __MEMORYAPI_H__
 #define __MEMORYAPI_H__
 
+#include <winapi_include_lib.h>
+
 #include <windef.h>
 #include <xboxkrnl/xboxkrnl.h>
 

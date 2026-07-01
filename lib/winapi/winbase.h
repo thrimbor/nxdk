@@ -6,6 +6,8 @@
 #ifndef __WINBASE_H__
 #define __WINBASE_H__
 
+#include <winapi_include_lib.h>
+
 #include <basetsd.h>
 #include <minwinbase.h>
 #include <windef.h>

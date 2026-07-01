@@ -6,6 +6,8 @@
 #ifndef __WINMM_TIMEAPI_H__
 #define __WINMM_TIMEAPI_H__
 
+#include <winapi_include_lib.h>
+
 #include <mmsystem.h>
 #include <windef.h>
 

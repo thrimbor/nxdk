@@ -7,6 +7,8 @@
 #ifndef __SYNCHAPI_H__
 #define __SYNCHAPI_H__
 
+#include <winapi_include_lib.h>
+
 #include <stdint.h>
 #include <winbase.h>
 #include <windef.h>

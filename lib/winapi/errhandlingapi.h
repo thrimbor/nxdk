@@ -5,6 +5,8 @@
 #ifndef __ERRHANDLINGAPI_H__
 #define __ERRHANDLINGAPI_H__
 
+#include <winapi_include_lib.h>
+
 #include <winbase.h>
 
 #ifdef __cplusplus
