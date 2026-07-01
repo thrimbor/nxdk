@@ -9,6 +9,8 @@
 #ifndef HAL_AUDIO_H
 #define HAL_AUDIO_H
 
+#include <hal/hal_include_lib.h>
+
 #if defined(__cplusplus)
 extern "C"
 {

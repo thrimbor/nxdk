@@ -9,6 +9,7 @@
 #ifndef HAL_XBOX_H
 #define HAL_XBOX_H
 
+#include <hal/hal_include_lib.h>
 
 #if defined(__cplusplus)
 extern "C"

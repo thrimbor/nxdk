@@ -11,7 +11,9 @@
 #ifndef HAL_VIDEO_H
 #define HAL_VIDEO_H
 
-#include <xboxkrnl/xboxkrnl.h>
+#include <hal/hal_include_lib.h>
+
+#include <windef.h>
 
 #if defined(__cplusplus)
 extern "C"

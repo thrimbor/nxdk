@@ -18,6 +18,8 @@
 #ifndef HAL_DEBUG_H
 #define HAL_DEBUG_H
 
+#include <hal/hal_include_lib.h>
+
 #if defined(__cplusplus)
 extern "C"
 {

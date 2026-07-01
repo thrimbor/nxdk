@@ -1,6 +1,8 @@
 #ifndef HAL_LED_H
 #define HAL_LED_H
 
+#include <hal/hal_include_lib.h>
+
 typedef enum _XLEDColor {
     XLED_OFF = 0x00,
     XLED_GREEN = 0x01,

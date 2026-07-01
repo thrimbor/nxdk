@@ -6,7 +6,8 @@
 #ifndef HAL_FILEIO_H
 #define HAL_FILEIO_H
 
-#include "xboxkrnl/xboxkrnl.h"
+#include <hal/hal_include_lib.h>
+
 #include "winerror.h"
 #include <winbase.h>
 
