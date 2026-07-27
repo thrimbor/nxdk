@@ -9,6 +9,7 @@
 #include <processthreadsapi.h>
 #include <string.h>
 #include <winbase.h>
+#include <winerror.h>
 #include <xboxkrnl/xboxkrnl.h>
 
 extern const IMAGE_TLS_DIRECTORY_32 _tls_used;
@@ -199,4 +200,16 @@ DWORD ResumeThread (HANDLE hThread)
     }
 
     return PreviousResumeCount;
+}
+
+DWORD WINAPI GetActiveProcessorCount (WORD GroupNumber)
+{
+    assert(GroupNumber == ALL_PROCESSOR_GROUPS || GroupNumber == 0);
+
+    if (GroupNumber == ALL_PROCESSOR_GROUPS || GroupNumber == 0) {
+        return 1;
+    }
+
+    SetLastError(ERROR_INVALID_PARAMETER);
+    return 0;
 }
