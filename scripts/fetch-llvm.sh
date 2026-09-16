@@ -5,6 +5,7 @@ set -e
 DIR=vendor/llvm
 
 if [ ! -d "$DIR/.git" ]; then
+    echo ">>> Fetching LLVM..."
     git clone \
         --filter=blob:none \
         --no-checkout \

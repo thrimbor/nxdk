@@ -1,4 +1,7 @@
-LIBCXX_DIR = $(NXDK_DIR)/lib/llvm/libcxx
+$(NXDK_DIR)/vendor/llvm:
+	$(NXDK_DIR)/scripts/fetch-llvm.sh
+
+LIBCXX_DIR = $(NXDK_DIR)/vendor/llvm/libcxx
 
 LIBCXX_SRCS += $(LIBCXX_DIR)/src/algorithm.cpp
 LIBCXX_SRCS += $(LIBCXX_DIR)/src/any.cpp
