@@ -61,7 +61,6 @@ TARGET += $(GEN_XISO)
 endif
 
 ifneq ($(NXDK_ONLY),)
-NXDK_CXX = y
 NXDK_SDL = y
 TARGET = main.exe
 endif
@@ -71,9 +70,7 @@ all: $(TARGET)
 include $(NXDK_DIR)/lib/Makefile
 OBJS = $(addsuffix .obj, $(basename $(SRCS)))
 
-ifneq ($(NXDK_CXX),)
-include $(NXDK_DIR)/lib/libcxx/Makefile.nxdk
-endif
+include $(NXDK_DIR)/lib/Makefile-libcxx
 
 include $(NXDK_DIR)/lib/net/Makefile
 

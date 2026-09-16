@@ -20,10 +20,6 @@
 	path = lib/pdclib
 	url = https://github.com/XboxDev/nxdk-pdclib.git
 	branch = nxdk
-[submodule "lib/libcxx"]
-	path = lib/libcxx
-	url = https://github.com/XboxDev/nxdk-libcxx.git
-	branch = nxdk
 [submodule "lib/zlib"]
 	path = lib/zlib/zlib
 	url = https://github.com/madler/zlib.git
