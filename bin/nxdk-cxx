@@ -11,7 +11,7 @@ clang \
     -ffreestanding \
     -nostdlib \
     -fno-builtin \
-    -I${NXDK_DIR}/vendor/libcxx/include \
+    -I${NXDK_DIR}/vendor/llvm/libcxx/include \
     -I${NXDK_DIR}/lib \
     -I${NXDK_DIR}/lib/xboxrt/libc_extensions \
     -isystem ${NXDK_DIR}/lib/pdclib/include \

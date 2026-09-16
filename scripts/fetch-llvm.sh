@@ -2,7 +2,7 @@
 
 set -e
 
-DIR=vendor/llvm
+DIR=$(NXDK_DIR)/vendor/llvm
 
 if [ ! -d "$DIR/.git" ]; then
     echo ">>> Fetching LLVM..."
