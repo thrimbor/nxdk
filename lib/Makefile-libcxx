@@ -55,6 +55,8 @@ LIBCXX_SRCS += $(LIBCXX_DIR)/src/ryu/d2fixed.cpp
 LIBCXX_SRCS += $(LIBCXX_DIR)/src/ryu/d2s.cpp
 LIBCXX_OBJS = $(addsuffix .obj, $(basename $(LIBCXX_SRCS)))
 
+$(LIBCXX_SRCS): $(NXDK_DIR)/vendor/llvm
+
 $(NXDK_DIR)/lib/libc++.lib: $(LIBCXX_OBJS)
 
 main.exe: $(NXDK_DIR)/lib/libc++.lib

@@ -70,8 +70,6 @@ all: $(TARGET)
 include $(NXDK_DIR)/lib/Makefile
 OBJS = $(addsuffix .obj, $(basename $(SRCS)))
 
-include $(NXDK_DIR)/lib/Makefile-libcxx
-
 include $(NXDK_DIR)/lib/net/Makefile
 
 ifneq ($(NXDK_SDL),)
