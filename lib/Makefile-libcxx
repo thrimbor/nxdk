@@ -61,7 +61,7 @@ $(NXDK_DIR)/lib/libc++.lib: $(LIBCXX_OBJS)
 
 main.exe: $(NXDK_DIR)/lib/libc++.lib
 
-NXDK_CXXFLAGS += -I${NXDK_DIR}/lib/llvm/libcxx/src/ -I${NXDK_DIR}/lib/llvm/libc/ --std=c++23 -D_LIBCPP_BUILDING_LIBRARY
+NXDK_CXXFLAGS += -I${NXDK_DIR}/vendor/llvm/libcxx/src/ -I${NXDK_DIR}/vendor/llvm/libc/ --std=c++23 -D_LIBCPP_BUILDING_LIBRARY
 
 CLEANRULES += clean-libcxx
 
