@@ -4,6 +4,7 @@
 
 FROM ghcr.io/xboxdev/nxdk-buildbase:git-3a71ed5f AS builder
 
+RUN apk add --update --no-cache git
 COPY ./ /usr/src/nxdk/
 ENV NXDK_DIR=/usr/src/nxdk
 RUN cd /usr/src/nxdk && make tools -j`nproc`
