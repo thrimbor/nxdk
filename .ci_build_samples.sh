@@ -16,7 +16,7 @@ else
 fi
 
 echo "::group::Building nxdk"
-make NXDK_ONLY=y -j${NUMCORES}
+make NXDK_ONLY=y
 echo "::endgroup::"
 
 for dir in samples/*/

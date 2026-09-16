@@ -9,7 +9,7 @@ COPY ./ /usr/src/nxdk/
 ENV NXDK_DIR=/usr/src/nxdk
 RUN cd /usr/src/nxdk && make tools -j`nproc`
 ARG buildparams
-RUN eval $(./usr/src/nxdk/bin/activate -s); cd /usr/src/nxdk && make NXDK_ONLY=y $buildparams -j`nproc`
+RUN eval $(./usr/src/nxdk/bin/activate -s); cd /usr/src/nxdk && make NXDK_ONLY=y $buildparams
 
 
 FROM ghcr.io/xboxdev/nxdk-runbase:git-3a71ed5f
