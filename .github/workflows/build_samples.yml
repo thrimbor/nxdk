@@ -47,7 +47,7 @@ jobs:
         run: ./.ci_build_samples.sh
   ubuntu:
     name: Ubuntu
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - name: Clone Tree
